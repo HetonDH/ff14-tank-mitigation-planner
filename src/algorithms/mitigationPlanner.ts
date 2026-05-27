@@ -2,7 +2,7 @@ import { getSkillsForJob } from "../data/tankJobs";
 import type { MitigationAssignment, PlannerResult, PlannerSettings, PlannerWarning, PlayerRole, TankJob } from "../types/mitigation";
 import type { TimelineEvent } from "../types/timeline";
 import { formatTime, inAnyWindow } from "../utils/time";
-import { scoreSkillForEvent, skillMatchesEvent } from "./scoring";
+import { mitigationStackGroup, scoreSkillForEvent, skillMatchesEvent } from "./scoring";
 
 export interface PlannerInput {
   events: TimelineEvent[];
@@ -22,7 +22,10 @@ function canCover(start: number, duration: number, event: TimelineEvent) {
 }
 
 function nextStartFor(event: TimelineEvent, duration: number) {
-  return Math.max(0, event.time - Math.min(4, Math.floor(duration / 2)));
+  const castLead = event.duration ? Math.min(8, Math.max(3, Math.floor(event.duration / 2))) : 0;
+  const activationLead = event.type === "tankbuster" || event.type === "aoe" ? 4 : 2;
+  const lead = Math.min(duration - 1, Math.max(castLead, activationLead));
+  return Math.max(0, event.time - lead);
 }
 
 function roleForEvent(event: TimelineEvent, playerRole: PlayerRole): PlayerRole {
@@ -37,6 +40,14 @@ function targetForEvent(event: TimelineEvent): MitigationAssignment["target"] {
   if (event.target === "MT") return "MT";
   if (event.target === "ST") return "ST";
   return "self";
+}
+
+function stackPenalty(skillIds: Set<string>, groups: Set<string>, skillId: string, group: string) {
+  if (skillIds.has(skillId)) return -500;
+  if (group === "hardMit" && groups.has("hardMit")) return -55;
+  if (group === "partyMit" && groups.has("partyMit")) return -45;
+  if (group === "invuln" && groups.size > 0) return -120;
+  return 0;
 }
 
 export function planMitigations(input: PlannerInput): PlannerResult {
@@ -135,7 +146,22 @@ export function planMitigations(input: PlannerInput): PlannerResult {
 
     const valid = buildValid(desiredRole, false);
     const neededLayers = event.type === "tankbuster" ? (event.severity === "lethal" ? 3 : 2) : 1;
-    const chosenList = valid.slice(0, neededLayers);
+    const chosenList = [];
+    const usedSkillIds = new Set<string>();
+    const usedGroups = new Set<string>();
+    for (let index = 0; index < neededLayers; index += 1) {
+      const chosen = valid
+        .filter((candidate) => !usedSkillIds.has(candidate.skill.id))
+        .map((candidate) => {
+          const group = mitigationStackGroup(candidate.skill);
+          return { ...candidate, adjustedScore: candidate.score + stackPenalty(usedSkillIds, usedGroups, candidate.skill.id, group) };
+        })
+        .sort((a, b) => b.adjustedScore - a.adjustedScore)[0];
+      if (!chosen) break;
+      chosenList.push(chosen);
+      usedSkillIds.add(chosen.skill.id);
+      usedGroups.add(mitigationStackGroup(chosen.skill));
+    }
     if (!chosenList.length) {
       warnings.push({
         id: `warn-uncovered-${event.id}`,
@@ -175,6 +201,15 @@ export function planMitigations(input: PlannerInput): PlannerResult {
       lastUse.set(`${chosen.role}:${chosen.skill.id}`, chosen.start);
       if (chosen.skill.category === "party") lastPartyMit = event.time;
     }
+
+    if (event.type === "tankbuster" && chosenList.filter((chosen) => mitigationStackGroup(chosen.skill) === "hardMit").length > 1) {
+      warnings.push({
+        id: `warn-hardmit-stack-${event.id}`,
+        level: "info",
+        eventId: event.id,
+        message: `${formatTime(event.time)}「${event.name}」叠加了多个硬减；硬减为乘算，收益会递减，建议确认是否真的需要。`,
+      });
+    }
   }
 
   const coveredIds = new Set(assignments.flatMap((assignment) => assignment.eventIds));
@@ -188,6 +223,8 @@ export function planMitigations(input: PlannerInput): PlannerResult {
       highRiskCount: events.filter((event) => event.severity === "high" || event.severity === "lethal").length,
       notes: [
         "当前为本地规则算法，优先检查 CD、覆盖、目标、伤害类型与等级。",
+        "减伤会尽量提前开启，默认给读条和服务器结算留出数秒缓冲。",
+        "死刑会避免过度堆叠同类硬减，优先组合大减、短 CD、支援减或无敌。",
         "平 A 会合并成压力窗口，避免每条平 A 都消耗大减伤。",
       ],
     },

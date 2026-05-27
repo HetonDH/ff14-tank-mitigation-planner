@@ -2,6 +2,17 @@ import type { MitigationSkill, PlannerSettings } from "../types/mitigation";
 import type { TimelineEvent } from "../types/timeline";
 import { inAnyWindow } from "../utils/time";
 
+export type MitigationStackGroup = "invuln" | "hardMit" | "shortMit" | "supportMit" | "partyMit" | "utility";
+
+export function mitigationStackGroup(skill: MitigationSkill): MitigationStackGroup {
+  if (skill.isInvuln) return "invuln";
+  if (skill.category === "party") return "partyMit";
+  if (skill.category === "target" && skill.canTargetPartner) return "supportMit";
+  if (skill.cooldown <= 30 || skill.category === "target") return "shortMit";
+  if ((skill.mitigationPercent ?? 0) > 0) return "hardMit";
+  return "utility";
+}
+
 export function skillMatchesEvent(skill: MitigationSkill, event: TimelineEvent): boolean {
   if (event.type === "mechanic") return false;
   if (skill.damageType !== "all" && skill.damageType !== event.damageType) return false;
@@ -28,14 +39,14 @@ export function scoreSkillForEvent(skill: MitigationSkill, event: TimelineEvent,
   if (skill.category === "target" && event.type === "aoe") score += 18;
   if (event.type === "tankbuster") {
     if (isBigMit) score += 68;
-    if (isShortMit) score += 52;
+    if (isShortMit) score += skill.cooldown <= 25 ? 72 : 52;
     if (isSupportMit) score += event.target === "bothTanks" ? 70 : 42;
     if (skill.category === "party") score -= 15;
   }
   if (event.severity === "high") score += skill.mitigationPercent ?? 8;
   if (event.severity === "lethal") score += (skill.mitigationPercent ?? 10) * 2;
   if (event.type === "auto") {
-    if (isShortMit) score += 50;
+    if (isShortMit) score += skill.cooldown <= 25 ? 80 : 50;
     if (isBigMit) score -= 45;
     if (skill.isInvuln || skill.category === "party") score -= 80;
   }
