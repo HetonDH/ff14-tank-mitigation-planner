@@ -21,6 +21,7 @@ export interface MitigationSkill {
   canTargetPartner: boolean;
   isInvuln: boolean;
   minLevel: number;
+  maxLevel?: number;
   notes?: string;
 }
 
