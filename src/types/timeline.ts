@@ -14,6 +14,8 @@ export interface TimelineEvent {
   duration?: number;
   notes?: string;
   severity: "low" | "medium" | "high" | "lethal";
+  source?: "spreadsheet" | "fflogs" | "localLog" | "example" | "json";
+  sourceId?: string;
   sourceRow?: number;
 }
 

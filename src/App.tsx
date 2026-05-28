@@ -15,6 +15,7 @@ import { planMitigations } from "./algorithms/mitigationPlanner";
 import type { AssignmentTarget, MitigationAssignment, PlannerSettings, PlannerWarning, PlayerRole, TankJob } from "./types/mitigation";
 import type { ParseReport, TimelineEvent } from "./types/timeline";
 import { parseTimelineFile } from "./utils/parseTimeline";
+import { parseFFLogsFile, parseFFLogsText } from "./utils/parseFFLogs";
 import { downloadJson, readJsonFile } from "./utils/exportImport";
 import type { UiLanguage } from "./types/ui";
 
@@ -31,6 +32,8 @@ const initialSettings: PlannerSettings = {
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
+  const [logFile, setLogFile] = useState<File | null>(null);
+  const [logText, setLogText] = useState("");
   const [report, setReport] = useState<ParseReport | null>(null);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [autoAssignments, setAutoAssignments] = useState<MitigationAssignment[]>([]);
@@ -59,6 +62,18 @@ function App() {
   async function readTimeline() {
     if (!file) return;
     const parsed = await parseTimelineFile(file);
+    setEvents(parsed.events);
+    setReport(parsed.report);
+    setAutoAssignments([]);
+    setManualAssignments([]);
+    setWarnings([]);
+    setSelectedEvent(null);
+  }
+
+  async function readLogTimeline() {
+    const parsed = logFile
+      ? await parseFFLogsFile(logFile)
+      : parseFFLogsText(logText);
     setEvents(parsed.events);
     setReport(parsed.report);
     setAutoAssignments([]);
@@ -217,7 +232,7 @@ function App() {
           onSettingsChange={(next) => { setSettings(next); setAutoAssignments([]); }}
         />
       }
-      left={<ImportPanel language={language} file={file} report={report} events={events} onFileChange={setFile} onRead={readTimeline} onUseExample={useExample} />}
+      left={<ImportPanel language={language} file={file} logFile={logFile} logText={logText} report={report} events={events} onFileChange={setFile} onLogFileChange={setLogFile} onLogTextChange={setLogText} onRead={readTimeline} onReadLog={readLogTimeline} onUseExample={useExample} />}
       center={
         <div className="space-y-3">
           <TimelineView language={language} events={events} assignments={assignments} maxTime={maxTime} onSelectEvent={setSelectedEvent} onDropSkill={addManualSkill} onMoveAssignment={moveManualAssignment} onDeleteManual={(id) => setManualAssignments((current) => current.filter((item) => item.id !== id))} skills={skills} />
