@@ -1,18 +1,22 @@
 import type { MitigationSkill } from "../types/mitigation";
-import { categoryLabels } from "../utils/labels";
+import type { UiLanguage } from "../types/ui";
+import { labelsFor } from "../utils/labels";
 import { JobBadge } from "./JobSelector";
 
 interface Props {
+  language: UiLanguage;
   skills: MitigationSkill[];
   activeRole?: string;
   activeJobName?: string;
 }
 
-export function SkillPalette({ skills, activeRole, activeJobName }: Props) {
+export function SkillPalette({ language, skills, activeRole, activeJobName }: Props) {
+  const zh = language === "zh";
+  const { categoryLabels } = labelsFor(language);
   return (
     <section className="tool-panel p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-base font-semibold">技能池</h2>
+        <h2 className="text-base font-semibold">{zh ? "技能池" : "Skill palette"}</h2>
         {activeRole && activeJobName ? <span className="rounded bg-slate-800 px-2 py-1 text-xs text-slate-300">{activeRole} · {activeJobName}</span> : null}
       </div>
       <div className="space-y-2">
@@ -25,10 +29,10 @@ export function SkillPalette({ skills, activeRole, activeJobName }: Props) {
             title={skill.notes}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-slate-100">{skill.zhName}</span>
-              <JobBadge job={skill.job} />
+              <span className="font-medium text-slate-100">{zh ? skill.zhName : skill.enName}</span>
+              <JobBadge job={skill.job} language={language} />
             </div>
-            <div className="mt-1 text-xs text-slate-400">冷却 {skill.cooldown}s · 持续 {skill.duration}s · {categoryLabels[skill.category]}</div>
+            <div className="mt-1 text-xs text-slate-400">{zh ? "冷却" : "Cooldown"} {skill.cooldown}s · {zh ? "持续" : "Duration"} {skill.duration}s · {categoryLabels[skill.category]}</div>
           </button>
         ))}
       </div>

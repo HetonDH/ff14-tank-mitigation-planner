@@ -2,7 +2,7 @@ import { getSkillsForJob } from "../data/tankJobs";
 import type { MitigationAssignment, PlannerResult, PlannerSettings, PlannerWarning, PlayerRole, TankJob } from "../types/mitigation";
 import type { TimelineEvent } from "../types/timeline";
 import { formatTime, inAnyWindow } from "../utils/time";
-import { mitigationStackGroup, scoreSkillForEvent, skillMatchesEvent } from "./scoring";
+import { isTankbusterEvent, mitigationStackGroup, scoreSkillForEvent, skillMatchesEvent } from "./scoring";
 
 export interface PlannerInput {
   events: TimelineEvent[];
@@ -23,7 +23,7 @@ function canCover(start: number, duration: number, event: TimelineEvent) {
 
 function nextStartFor(event: TimelineEvent, duration: number) {
   const castLead = event.duration ? Math.min(8, Math.max(3, Math.floor(event.duration / 2))) : 0;
-  const activationLead = event.type === "tankbuster" || event.type === "aoe" ? 4 : 2;
+  const activationLead = isTankbusterEvent(event) || event.type === "aoe" ? 4 : 2;
   const lead = Math.min(duration - 1, Math.max(castLead, activationLead));
   return Math.max(0, event.time - lead);
 }
@@ -52,6 +52,7 @@ function stackPenalty(skillIds: Set<string>, groups: Set<string>, skillId: strin
 
 export function planMitigations(input: PlannerInput): PlannerResult {
   const { events, playerRole, settings } = input;
+  const zh = settings.language !== "en";
   const warnings: PlannerWarning[] = [];
   const assignments: MitigationAssignment[] = [];
   const mtSkills = getSkillsForJob(input.mainTankJob, input.mainTankLevel);
@@ -63,12 +64,12 @@ export function planMitigations(input: PlannerInput): PlannerResult {
   const autoWindows = candidateEvents.filter((event) => event.type === "auto");
   const autoWindowIds = new Set(autoWindows.map((event) => event.id));
   const pressureEvents = autoWindows.length
-    ? [{ ...autoWindows[0], id: "auto-pressure", name: "平 A 压力窗口", time: autoWindows[0].time, duration: Math.max(8, (autoWindows[autoWindows.length - 1]?.time ?? autoWindows[0].time) - autoWindows[0].time + 8), severity: "medium" as const }]
+    ? [{ ...autoWindows[0], id: "auto-pressure", name: zh ? "平 A 压力窗口" : "Auto pressure window", time: autoWindows[0].time, duration: Math.max(8, (autoWindows[autoWindows.length - 1]?.time ?? autoWindows[0].time) - autoWindows[0].time + 8), severity: "medium" as const }]
     : [];
   const workEvents = [...candidateEvents.filter((event) => event.type !== "auto"), ...pressureEvents].sort((a, b) => a.time - b.time);
 
   for (const event of workEvents) {
-    const highRisk = event.severity === "high" || event.severity === "lethal" || event.type === "tankbuster";
+    const highRisk = event.severity === "high" || event.severity === "lethal" || isTankbusterEvent(event);
     const availableSkillPools = [
       { role: "MT" as PlayerRole, job: input.mainTankJob, skills: mtSkills },
       { role: "ST" as PlayerRole, job: input.offTankJob, skills: stSkills },
@@ -109,7 +110,7 @@ export function planMitigations(input: PlannerInput): PlannerResult {
             id: `warn-uncovered-${event.id}-${requiredRole}`,
             level: highRisk ? "danger" : "warning",
             eventId: event.id,
-            message: `${formatTime(event.time)}「${event.name}」没有给 ${requiredRole} 找到可用减伤。`,
+            message: zh ? `${formatTime(event.time)}「${event.name}」没有给 ${requiredRole} 找到可用减伤。` : `${formatTime(event.time)} "${event.name}" has no available mitigation for ${requiredRole}.`,
           });
           continue;
         }
@@ -129,12 +130,12 @@ export function planMitigations(input: PlannerInput): PlannerResult {
         };
 
         if (settings.avoidBurstWindows && inAnyWindow(chosen.start, settings.burstWindows, settings.burstWindowRadius)) {
-          assignment.warning = "落在爆发窗口附近；因覆盖或 CD 需要仍然安排。";
+          assignment.warning = zh ? "落在爆发窗口附近；因覆盖或 CD 需要仍然安排。" : "Near a burst window; kept because coverage or cooldown requires it.";
           warnings.push({
             id: `warn-burst-${assignment.id}`,
             level: "info",
             assignmentId: assignment.id,
-            message: `${assignment.skillName} 安排在 ${formatTime(assignment.start)}，靠近爆发窗口。`,
+            message: zh ? `${assignment.skillName} 安排在 ${formatTime(assignment.start)}，靠近爆发窗口。` : `${assignment.skillName} is scheduled at ${formatTime(assignment.start)}, near a burst window.`,
           });
         }
 
@@ -145,7 +146,7 @@ export function planMitigations(input: PlannerInput): PlannerResult {
     }
 
     const valid = buildValid(desiredRole, false);
-    const neededLayers = event.type === "tankbuster" ? (event.severity === "lethal" ? 3 : 2) : 1;
+    const neededLayers = isTankbusterEvent(event) ? (event.severity === "lethal" ? 3 : 2) : 1;
     const chosenList = [];
     const usedSkillIds = new Set<string>();
     const usedGroups = new Set<string>();
@@ -167,7 +168,7 @@ export function planMitigations(input: PlannerInput): PlannerResult {
         id: `warn-uncovered-${event.id}`,
         level: highRisk ? "danger" : "warning",
         eventId: event.id,
-        message: `${formatTime(event.time)}「${event.name}」没有找到完全匹配且 CD 可用的减伤。`,
+        message: zh ? `${formatTime(event.time)}「${event.name}」没有找到完全匹配且 CD 可用的减伤。` : `${formatTime(event.time)} "${event.name}" has no fully matching mitigation off cooldown.`,
       });
       continue;
     }
@@ -188,12 +189,12 @@ export function planMitigations(input: PlannerInput): PlannerResult {
       };
 
       if (settings.avoidBurstWindows && inAnyWindow(chosen.start, settings.burstWindows, settings.burstWindowRadius)) {
-        assignment.warning = "落在爆发窗口附近；因覆盖或 CD 需要仍然安排。";
+        assignment.warning = zh ? "落在爆发窗口附近；因覆盖或 CD 需要仍然安排。" : "Near a burst window; kept because coverage or cooldown requires it.";
         warnings.push({
           id: `warn-burst-${assignment.id}`,
           level: "info",
           assignmentId: assignment.id,
-          message: `${assignment.skillName} 安排在 ${formatTime(assignment.start)}，靠近爆发窗口。`,
+          message: zh ? `${assignment.skillName} 安排在 ${formatTime(assignment.start)}，靠近爆发窗口。` : `${assignment.skillName} is scheduled at ${formatTime(assignment.start)}, near a burst window.`,
         });
       }
 
@@ -202,12 +203,12 @@ export function planMitigations(input: PlannerInput): PlannerResult {
       if (chosen.skill.category === "party") lastPartyMit = event.time;
     }
 
-    if (event.type === "tankbuster" && chosenList.filter((chosen) => mitigationStackGroup(chosen.skill) === "hardMit").length > 1) {
+    if (isTankbusterEvent(event) && chosenList.filter((chosen) => mitigationStackGroup(chosen.skill) === "hardMit").length > 1) {
       warnings.push({
         id: `warn-hardmit-stack-${event.id}`,
         level: "info",
         eventId: event.id,
-        message: `${formatTime(event.time)}「${event.name}」叠加了多个硬减；硬减为乘算，收益会递减，建议确认是否真的需要。`,
+        message: zh ? `${formatTime(event.time)}「${event.name}」叠加了多个硬减；硬减为乘算，收益会递减，建议确认是否真的需要。` : `${formatTime(event.time)} "${event.name}" stacks multiple hard mitigations. Percent mitigation is multiplicative, so returns diminish; please confirm it is needed.`,
       });
     }
   }
@@ -222,10 +223,10 @@ export function planMitigations(input: PlannerInput): PlannerResult {
       assignmentCount: assignments.length,
       highRiskCount: events.filter((event) => event.severity === "high" || event.severity === "lethal").length,
       notes: [
-        "当前为本地规则算法，优先检查 CD、覆盖、目标、伤害类型与等级。",
-        "减伤会尽量提前开启，默认给读条和服务器结算留出数秒缓冲。",
-        "死刑会避免过度堆叠同类硬减，优先组合大减、短 CD、支援减或无敌。",
-        "平 A 会合并成压力窗口，避免每条平 A 都消耗大减伤。",
+        zh ? "当前为本地规则算法，优先检查 CD、覆盖、目标、伤害类型与等级。" : "This is a local rules-based planner that checks cooldowns, coverage, targets, damage type, and level.",
+        zh ? "减伤会尽量提前开启，默认给读条和服务器结算留出数秒缓冲。" : "Mitigation is scheduled slightly early to leave room for cast timing and server resolution.",
+        zh ? "死刑会避免过度堆叠同类硬减，优先组合大减、短 CD、支援减或无敌。" : "Tank busters try to avoid overstacking the same hard mitigation group and prefer mixed layers.",
+        zh ? "平 A 会合并成压力窗口，避免每条平 A 都消耗大减伤。" : "Autos are merged into pressure windows to avoid spending large cooldowns on every auto.",
       ],
     },
   };

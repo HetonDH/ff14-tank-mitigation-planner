@@ -7,6 +7,13 @@ export const jobNames: Record<TankJob, string> = {
   GNB: "绝枪战士",
 };
 
+export const jobNamesEn: Record<TankJob, string> = {
+  PLD: "Paladin",
+  WAR: "Warrior",
+  DRK: "Dark Knight",
+  GNB: "Gunbreaker",
+};
+
 export const tankSkills: MitigationSkill[] = [
   { id: "common-rampart", job: "COMMON", zhName: "铁壁", enName: "Rampart", category: "personal", cooldown: 90, duration: 20, mitigationPercent: 20, damageType: "all", targeting: "self", canTargetPartner: false, isInvuln: false, minLevel: 8 },
   { id: "common-reprisal", job: "COMMON", zhName: "雪仇", enName: "Reprisal", category: "party", cooldown: 60, duration: 15, mitigationPercent: 10, damageType: "all", targeting: "party", canTargetPartner: false, isInvuln: false, minLevel: 22, notes: "对敌人施加降低伤害效果，适合团伤前使用。" },

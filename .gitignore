@@ -4,6 +4,7 @@ dist
 vite.config.js
 vite.config.d.ts
 dev-server.*.log
+release/
 .env
 .env.local
 .DS_Store

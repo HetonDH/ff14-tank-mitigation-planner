@@ -1,5 +1,5 @@
 import type { PlannerSettings, PlayerRole, TankJob } from "../types/mitigation";
-import { jobNames } from "../data/tankJobs";
+import { jobNames, jobNamesEn } from "../data/tankJobs";
 import type { UiLanguage } from "../types/ui";
 
 interface Props {
@@ -29,6 +29,7 @@ const jobs: TankJob[] = ["PLD", "WAR", "DRK", "GNB"];
 export function SettingsPanel(props: Props) {
   const { settings } = props;
   const zh = props.language === "zh";
+  const jobLabel = zh ? jobNames : jobNamesEn;
   return (
     <section className="tool-panel p-4">
       <div className="space-y-3">
@@ -38,7 +39,7 @@ export function SettingsPanel(props: Props) {
           <label className="text-xs text-slate-400">
             {zh ? "职业" : "Job"}
             <select className="field mt-1 w-full" value={props.mtJob} onChange={(event) => props.onMtJobChange(event.target.value as TankJob)}>
-              {jobs.map((job) => <option key={job} value={job}>{jobNames[job]}</option>)}
+              {jobs.map((job) => <option key={job} value={job}>{jobLabel[job]}</option>)}
             </select>
           </label>
           <label className="text-xs text-slate-400">
@@ -62,7 +63,7 @@ export function SettingsPanel(props: Props) {
           <label className="text-xs text-slate-400">
             {zh ? "职业" : "Job"}
             <select className="field mt-1 w-full" value={props.stJob} onChange={(event) => props.onStJobChange(event.target.value as TankJob)}>
-              {jobs.map((job) => <option key={job} value={job}>{jobNames[job]}</option>)}
+              {jobs.map((job) => <option key={job} value={job}>{jobLabel[job]}</option>)}
             </select>
           </label>
           <label className="text-xs text-slate-400">

@@ -79,7 +79,7 @@ function inferTarget(name: string, notes: string, explicit: unknown): TimelineTa
   const normalized = normalizeTarget(explicitText);
   if (normalized) return normalized;
   const text = `${name} ${notes}`.toLowerCase();
-  if (text.includes("双t") || text.includes("mt/st") || text.includes("换t")) return "bothTanks";
+  if (text.includes("双t") || text.includes("双 t") || text.includes("mt/st") || text.includes("换t") || text.includes("分摊") || text.includes("分散")) return "bothTanks";
   if (text.includes("死刑") || text.includes("平a") || text.includes("aa") || text.includes("solar ray") || text.includes("tankbuster") || text.includes("顺劈")) return "MT";
   return "party";
 }
@@ -87,10 +87,24 @@ function inferTarget(name: string, notes: string, explicit: unknown): TimelineTa
 function inferEventType(name: string, damage: number | undefined, target: TimelineTarget): TimelineEventType {
   const text = name.toLowerCase();
   if (text.includes("平a") || text === "aa" || text.includes("_aa") || text.includes("attack") || text.includes("攻击")) return "auto";
-  if (text.includes("死刑") || text.includes("tankbuster") || text.includes("solar ray") || text.includes("顺劈")) return "tankbuster";
+  if (text.includes("分摊") || text.includes("shared tankbuster") || text.includes("shared buster") || text.includes("stack buster")) return "sharedTankbuster";
+  if (text.includes("分散") || text.includes("双t") || text.includes("双 t") || text.includes("spread tankbuster") || text.includes("double tankbuster")) return "spreadTankbuster";
+  if (text.includes("死刑") || text.includes("tankbuster") || text.includes("solar ray") || text.includes("顺劈")) return target === "bothTanks" ? "spreadTankbuster" : "singleTankbuster";
   if (damage !== undefined && (target === "party" || target === "bothTanks")) return "aoe";
-  if (damage !== undefined && target !== "party") return "tankbuster";
+  if (damage !== undefined && target !== "party") return target === "bothTanks" ? "spreadTankbuster" : "singleTankbuster";
   return "mechanic";
+}
+
+function normalizeEventType(value: unknown): TimelineEventType | null {
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text) return null;
+  if (["机制", "mechanic", "无伤害"].includes(text)) return "mechanic";
+  if (["平a", "平 a", "auto", "auto attack", "aa"].includes(text)) return "auto";
+  if (["单体死刑", "单t死刑", "single tankbuster", "single buster", "tankbuster", "tb"].includes(text)) return "singleTankbuster";
+  if (["双t分摊死刑", "双 t 分摊死刑", "分摊死刑", "shared tankbuster", "shared buster", "stack buster"].includes(text)) return "sharedTankbuster";
+  if (["双t分散死刑", "双 t 分散死刑", "分散死刑", "双t死刑", "spread tankbuster", "double tankbuster"].includes(text)) return "spreadTankbuster";
+  if (["aoe", "团伤", "全体伤害"].includes(text)) return "aoe";
+  return null;
 }
 
 function severityFrom(row: Record<string, unknown>, damage?: number, type?: TimelineEventType): TimelineEvent["severity"] {
@@ -126,11 +140,13 @@ function rowsToEvents(rows: Record<string, unknown>[], fileName: string, sheetNa
       return;
     }
     const notes = [get("notes"), get("enName")].filter(Boolean).join(" / ");
-    const target = inferTarget(name, notes, get("target"));
+    let target = inferTarget(name, notes, get("target"));
     const damage = parseDamageFromRow(row, get("damage"));
     const duration = parseTimeToSeconds(get("duration")) ?? undefined;
+    const explicitType = normalizeEventType(get("type"));
     const damageType = normalizeDamageType(get("type"));
-    const type = inferEventType(name, damage, target);
+    const type = explicitType ?? inferEventType(name, damage, target);
+    if ((type === "sharedTankbuster" || type === "spreadTankbuster") && target === "party") target = "bothTanks";
     events.push({
       id: `evt-${index}-${Math.round(time * 1000)}`,
       time,

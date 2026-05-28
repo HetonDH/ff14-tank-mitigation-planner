@@ -35,5 +35,9 @@ export async function readJsonFile(file: File): Promise<PlannerStateExport> {
   if (!parsed.version || !Array.isArray(parsed.events) || !Array.isArray(parsed.assignments)) {
     throw new Error("JSON 格式不符合排轴导出结构");
   }
+  parsed.events = parsed.events.map((event) => ({
+    ...event,
+    type: (event.type as string) === "tankbuster" ? (event.target === "bothTanks" ? "spreadTankbuster" : "singleTankbuster") : event.type,
+  } as TimelineEvent));
   return parsed;
 }

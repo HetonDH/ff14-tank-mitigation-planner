@@ -1,10 +1,13 @@
 import { useState } from "react";
 import type { MitigationAssignment, MitigationSkill } from "../types/mitigation";
 import type { TimelineEvent } from "../types/timeline";
-import { assignmentTargetLabels, eventTypeLabels, timelineTargetLabels } from "../utils/labels";
+import type { UiLanguage } from "../types/ui";
+import { findSkill } from "../data/tankJobs";
+import { labelsFor } from "../utils/labels";
 import { formatTime } from "../utils/time";
 
 interface Props {
+  language: UiLanguage;
   events: TimelineEvent[];
   assignments: MitigationAssignment[];
   maxTime: number;
@@ -15,7 +18,9 @@ interface Props {
   skills: MitigationSkill[];
 }
 
-export function TimelineView({ events, assignments, maxTime, onSelectEvent, onDropSkill, onMoveAssignment, onDeleteManual }: Props) {
+export function TimelineView({ language, events, assignments, maxTime, onSelectEvent, onDropSkill, onMoveAssignment, onDeleteManual }: Props) {
+  const zh = language === "zh";
+  const { assignmentTargetLabels, eventTypeLabels, timelineTargetLabels } = labelsFor(language);
   const [pixelsPerSecond, setPixelsPerSecond] = useState(10);
   const safeMax = Math.max(maxTime, 180);
   const width = Math.max(900, safeMax * pixelsPerSecond);
@@ -33,7 +38,7 @@ export function TimelineView({ events, assignments, maxTime, onSelectEvent, onDr
   function eventClass(event: TimelineEvent) {
     if (event.type === "mechanic") return "border-sky-300/60 bg-sky-400/15 text-sky-50 hover:bg-sky-400/25";
     if (event.type === "auto") return "border-slate-300/60 bg-slate-300/20 text-slate-50 hover:bg-slate-300/30";
-    if (event.target === "party") return "border-yellow-300/70 bg-yellow-400/20 text-yellow-50 hover:bg-yellow-400/30";
+    if (event.target === "party" || event.type === "aoe") return "border-yellow-300/70 bg-yellow-400/20 text-yellow-50 hover:bg-yellow-400/30";
     return "border-red-400/70 bg-red-500/20 text-red-50 hover:bg-red-500/30";
   }
 
@@ -81,9 +86,9 @@ export function TimelineView({ events, assignments, maxTime, onSelectEvent, onDr
   return (
     <section className="tool-panel flex flex-col overflow-hidden">
       <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-2">
-        <h2 className="text-base font-semibold">减伤时间轴</h2>
+        <h2 className="text-base font-semibold">{zh ? "减伤时间轴" : "Mitigation timeline"}</h2>
         <label className="flex items-center gap-2 text-xs text-slate-400">
-          时间缩放
+          {zh ? "时间缩放" : "Scale"}
           <input
             type="range"
             min={4}
@@ -91,7 +96,7 @@ export function TimelineView({ events, assignments, maxTime, onSelectEvent, onDr
             value={pixelsPerSecond}
             onChange={(event) => setPixelsPerSecond(Number(event.target.value))}
           />
-          <span className="w-16 text-right">{pixelsPerSecond}px/秒</span>
+          <span className="w-16 text-right">{pixelsPerSecond}px/{zh ? "秒" : "s"}</span>
         </label>
       </div>
       <div
@@ -122,9 +127,9 @@ export function TimelineView({ events, assignments, maxTime, onSelectEvent, onDr
           <div className="absolute left-0 top-[32px] h-px w-full bg-slate-800" />
           <div className="absolute left-0 h-px w-full bg-slate-800" style={{ top: mtLaneTop - 4 }} />
           <div className="absolute left-0 h-px w-full bg-slate-800" style={{ top: stLaneTop - 4 }} />
-          <div className="absolute left-3 top-3 text-xs text-slate-500">事件</div>
-          <div className="absolute left-3 text-xs text-cyan-200" style={{ top: mtLaneTop - 26 }}>MT 减伤轴</div>
-          <div className="absolute left-3 text-xs text-emerald-200" style={{ top: stLaneTop - 26 }}>ST 减伤轴</div>
+          <div className="absolute left-3 top-3 text-xs text-slate-500">{zh ? "事件" : "Events"}</div>
+          <div className="absolute left-3 text-xs text-cyan-200" style={{ top: mtLaneTop - 26 }}>MT {zh ? "减伤轴" : "mitigation"}</div>
+          <div className="absolute left-3 text-xs text-emerald-200" style={{ top: stLaneTop - 26 }}>ST {zh ? "减伤轴" : "mitigation"}</div>
 
           {eventBlocks.map(({ event, left, top, width: eventWidth }) => (
             <button
@@ -135,13 +140,13 @@ export function TimelineView({ events, assignments, maxTime, onSelectEvent, onDr
             >
               <div className="truncate font-semibold">{event.name}</div>
               <div>{timelineTargetLabels[event.target]} · {eventTypeLabels[event.type]}</div>
-              <div>{formatTime(event.time)}{event.damage ? ` · ${Math.round(event.damage).toLocaleString()}伤害` : ""}</div>
+              <div>{formatTime(event.time)}{event.damage ? ` · ${Math.round(event.damage).toLocaleString()} ${zh ? "伤害" : "damage"}` : ""}</div>
             </button>
           ))}
 
           {assignmentBlocks.map(({ assignment, left, top, width: assignmentWidth }) => (
             (() => {
-              const hasConflict = assignment.warning?.includes("冲突") ?? false;
+              const hasConflict = assignment.warning?.includes("冲突") || assignment.warning?.toLowerCase().includes("conflict") || false;
               return (
             <button
               key={assignment.id}
@@ -154,9 +159,9 @@ export function TimelineView({ events, assignments, maxTime, onSelectEvent, onDr
                   event.dataTransfer.setData("text/plain", `move-assignment:${assignment.id}`);
                 }
               }}
-              title={assignment.source === "manual" ? "拖动可调整时间，双击删除手动减伤" : assignment.warning}
+              title={assignment.source === "manual" ? (zh ? "拖动可调整时间，双击删除手动减伤" : "Drag to adjust time, double-click to delete manual mitigation") : assignment.warning}
             >
-              <div className="truncate font-semibold">{assignment.skillName}</div>
+              <div className="truncate font-semibold">{zh ? assignment.skillName : findSkill(assignment.skillId)?.enName ?? assignment.skillName}</div>
               <div>{assignment.casterRole} → {assignmentTargetLabels[assignment.target]}</div>
             </button>
               );

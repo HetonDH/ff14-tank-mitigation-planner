@@ -10,7 +10,7 @@ import { TimelineView } from "./components/TimelineView";
 import { WarningPanel } from "./components/WarningPanel";
 import { TutorialModal } from "./components/TutorialModal";
 import { exampleTimeline } from "./data/timelineExamples";
-import { findSkill, getSkillsForJob, jobNames } from "./data/tankJobs";
+import { findSkill, getSkillsForJob, jobNames, jobNamesEn } from "./data/tankJobs";
 import { planMitigations } from "./algorithms/mitigationPlanner";
 import type { AssignmentTarget, MitigationAssignment, PlannerSettings, PlannerWarning, PlayerRole, TankJob } from "./types/mitigation";
 import type { ParseReport, TimelineEvent } from "./types/timeline";
@@ -69,7 +69,7 @@ function App() {
 
   function useExample() {
     setEvents(exampleTimeline);
-    setReport({ fileName: "内置示例", eventCount: exampleTimeline.length, sheetName: "示例时间轴", recognizedColumns: ["time", "name", "damage", "type", "target", "duration", "notes"], skippedRows: [] });
+    setReport({ fileName: language === "zh" ? "内置示例" : "Built-in example", eventCount: exampleTimeline.length, sheetName: language === "zh" ? "示例时间轴" : "Example timeline", recognizedColumns: ["time", "name", "damage", "type", "target", "duration", "notes"], skippedRows: [] });
     setAutoAssignments([]);
     setManualAssignments([]);
     setWarnings([]);
@@ -86,7 +86,7 @@ function App() {
       offTankHp: stHp,
       playerRole,
       partnerJob: offTankJob,
-      settings,
+      settings: { ...settings, language },
     });
     setAutoAssignments(result.assignments);
     setWarnings(result.warnings);
@@ -96,11 +96,11 @@ function App() {
     const skill = findSkill(skillId);
     if (!skill) return;
     const target = skill.canTargetPartner
-      ? (window.prompt("请选择目标：自己 / MT / ST / 全队", "自己") ?? "自己")
+      ? (window.prompt(language === "zh" ? "请选择目标：自己 / MT / ST / 全队" : "Choose target: Self / MT / ST / Party", language === "zh" ? "自己" : "Self") ?? (language === "zh" ? "自己" : "Self"))
       : skill.targeting === "party"
-        ? "全队"
-        : "自己";
-    const normalizedTarget: AssignmentTarget = target.includes("MT") ? "MT" : target.includes("ST") ? "ST" : target.includes("全队") ? "party" : "self";
+        ? (language === "zh" ? "全队" : "Party")
+        : (language === "zh" ? "自己" : "Self");
+    const normalizedTarget: AssignmentTarget = target.includes("MT") ? "MT" : target.includes("ST") ? "ST" : target.includes("全队") || target.toLowerCase().includes("party") ? "party" : "self";
     const cdConflict = manualAssignments.concat(autoAssignments).some((item) => item.skillId === skill.id && Math.abs(item.start - start) < skill.cooldown);
     const id = `manual-${skill.id}-${Date.now()}`;
     const assignment: MitigationAssignment = {
@@ -115,11 +115,11 @@ function App() {
       duration: skill.duration,
       eventIds: events.filter((event) => start <= event.time && start + skill.duration >= event.time).map((event) => event.id),
       source: "manual",
-      warning: cdConflict ? "与已有同技能 CD 冲突，已按你的手动操作保留。" : undefined,
+      warning: cdConflict ? (language === "zh" ? "与已有同技能 CD 冲突，已按你的手动操作保留。" : "Cooldown conflict with an existing use of the same skill; manual placement was kept.") : undefined,
     };
     setManualAssignments((current) => [...current, assignment]);
     if (cdConflict) {
-      setWarnings((current) => [...current, { id: `warn-${id}`, level: "warning", assignmentId: id, message: `${skill.zhName} 在 ${start}s 手动添加时检测到 CD 冲突，已允许继续。` }]);
+      setWarnings((current) => [...current, { id: `warn-${id}`, level: "warning", assignmentId: id, message: language === "zh" ? `${skill.zhName} 在 ${start}s 手动添加时检测到 CD 冲突，已允许继续。` : `${skill.enName} was manually added at ${start}s with a cooldown conflict; it was kept.` }]);
     }
   }
 
@@ -136,7 +136,7 @@ function App() {
           start,
           end: start + assignment.duration,
           eventIds: events.filter((event) => start <= event.time && start + assignment.duration >= event.time).map((event) => event.id),
-          warning: conflict ? "拖动后可能与已有同技能安排冲突，请检查 CD。" : assignment.warning,
+          warning: conflict ? (language === "zh" ? "拖动后可能与已有同技能安排冲突，请检查 CD。" : "This move may conflict with another use of the same skill. Check cooldowns.") : assignment.warning,
         };
       }),
     );
@@ -154,7 +154,7 @@ function App() {
       events,
       assignments,
       selectedJobs: { playerRole, mainTankJob, offTankJob, partnerJob: offTankJob, mtLevel, stLevel, mtHp, stHp },
-      settings,
+      settings: { ...settings, language },
       warnings,
     });
   }
@@ -173,8 +173,9 @@ function App() {
     setMtHp(data.selectedJobs.mtHp ?? 280000);
     setStHp(data.selectedJobs.stHp ?? 280000);
     setSettings({ ...initialSettings, ...data.settings, partyMitigationSpacing: 15, burstWindows: data.settings.burstWindows?.length ? data.settings.burstWindows : initialSettings.burstWindows });
+    if (data.settings.language === "zh" || data.settings.language === "en") setLanguage(data.settings.language);
     setWarnings(data.warnings);
-    setReport({ fileName: "导入 JSON", eventCount: data.events.length, sheetName: "JSON", recognizedColumns: ["events", "assignments", "selectedJobs", "settings", "warnings"], skippedRows: [] });
+    setReport({ fileName: language === "zh" ? "导入 JSON" : "Imported JSON", eventCount: data.events.length, sheetName: "JSON", recognizedColumns: ["events", "assignments", "selectedJobs", "settings", "warnings"], skippedRows: [] });
   }
 
   return (
@@ -185,11 +186,11 @@ function App() {
         <>
           <button className="btn" onClick={() => setShowTutorial(true)}><BookOpen size={16} />{language === "zh" ? "新手教程" : "Guide"}</button>
           <button className="btn" onClick={() => setLanguage((current) => current === "zh" ? "en" : "zh")}>{language === "zh" ? "English" : "中文"}</button>
-          <button className="btn btn-primary" onClick={generatePlan} disabled={!events.length}><Sparkles size={16} />一键生成最佳减伤</button>
-          <button className="btn" onClick={() => setAutoAssignments([])}><Eraser size={16} />清空自动排轴</button>
-          <button className="btn" onClick={() => setManualAssignments([])}><Eraser size={16} />清空手动排轴</button>
-          <button className="btn" onClick={exportJson}><Download size={16} />导出 JSON</button>
-          <button className="btn" onClick={() => importJsonRef.current?.click()}><Upload size={16} />导入 JSON</button>
+          <button className="btn btn-primary" onClick={generatePlan} disabled={!events.length}><Sparkles size={16} />{language === "zh" ? "一键生成最佳减伤" : "Generate best plan"}</button>
+          <button className="btn" onClick={() => setAutoAssignments([])}><Eraser size={16} />{language === "zh" ? "清空自动排轴" : "Clear auto plan"}</button>
+          <button className="btn" onClick={() => setManualAssignments([])}><Eraser size={16} />{language === "zh" ? "清空手动排轴" : "Clear manual plan"}</button>
+          <button className="btn" onClick={exportJson}><Download size={16} />{language === "zh" ? "导出 JSON" : "Export JSON"}</button>
+          <button className="btn" onClick={() => importJsonRef.current?.click()}><Upload size={16} />{language === "zh" ? "导入 JSON" : "Import JSON"}</button>
           <input ref={importJsonRef} className="hidden" type="file" accept=".json" onChange={(event) => importJson(event.target.files?.[0] ?? null)} />
         </>
       }
@@ -216,17 +217,17 @@ function App() {
           onSettingsChange={(next) => { setSettings(next); setAutoAssignments([]); }}
         />
       }
-      left={<ImportPanel file={file} report={report} events={events} onFileChange={setFile} onRead={readTimeline} onUseExample={useExample} />}
+      left={<ImportPanel language={language} file={file} report={report} events={events} onFileChange={setFile} onRead={readTimeline} onUseExample={useExample} />}
       center={
         <div className="space-y-3">
-          <TimelineView events={events} assignments={assignments} maxTime={maxTime} onSelectEvent={setSelectedEvent} onDropSkill={addManualSkill} onMoveAssignment={moveManualAssignment} onDeleteManual={(id) => setManualAssignments((current) => current.filter((item) => item.id !== id))} skills={skills} />
+          <TimelineView language={language} events={events} assignments={assignments} maxTime={maxTime} onSelectEvent={setSelectedEvent} onDropSkill={addManualSkill} onMoveAssignment={moveManualAssignment} onDeleteManual={(id) => setManualAssignments((current) => current.filter((item) => item.id !== id))} skills={skills} />
           <div className="grid grid-cols-2 gap-3">
-            <MitigationTable assignments={assignments} />
-            <WarningPanel warnings={warnings} />
+            <MitigationTable language={language} assignments={assignments} />
+            <WarningPanel language={language} warnings={warnings} />
           </div>
         </div>
       }
-      right={<><SkillPalette skills={skills} activeRole={playerRole} activeJobName={jobNames[manualJob]} /><EventInspector event={selectedEvent} assignments={assignments} onUpdateEvent={updateEvent} /></>}
+      right={<><SkillPalette language={language} skills={skills} activeRole={playerRole} activeJobName={(language === "zh" ? jobNames : jobNamesEn)[manualJob]} /><EventInspector language={language} event={selectedEvent} assignments={assignments} onUpdateEvent={updateEvent} /></>}
     />
     {showTutorial ? <TutorialModal language={language} onClose={() => setShowTutorial(false)} /> : null}
     </>
