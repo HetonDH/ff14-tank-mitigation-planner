@@ -1,6 +1,6 @@
 import type { DamageType, TankJob } from "../types/mitigation";
 import type { FFLogsAbility, FFLogsActor, FFLogsEvent, FFLogsImportInput } from "../types/fflogs";
-import type { ParseReport, TimelineEvent, TimelineEventType, TimelineTarget } from "../types/timeline";
+import type { LogEncounterOption, ParseReport, TimelineEvent, TimelineEventType, TimelineTarget } from "../types/timeline";
 
 const TANK_JOB_BY_LOG_TYPE: Record<string, TankJob> = {
   paladin: "PLD",
@@ -183,9 +183,9 @@ export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; repor
   };
 }
 
-export async function parseFFLogsFile(file: File): Promise<{ events: TimelineEvent[]; report: ParseReport }> {
+export async function parseFFLogsFile(file: File, encounterId?: string): Promise<{ events: TimelineEvent[]; report: ParseReport }> {
   const text = await file.text();
-  return parseFFLogsText(text, file.name);
+  return parseFFLogsText(text, file.name, encounterId);
 }
 
 function parsePossibleDamage(value: string): number | undefined {
@@ -202,9 +202,34 @@ function parsePossibleDamage(value: string): number | undefined {
   return undefined;
 }
 
-function parseLocalCombatLog(text: string, fileName = "本地日志"): { events: TimelineEvent[]; report: ParseReport } {
+interface LocalLogHit {
+  row: number;
+  timestamp: number;
+  timestampText: string;
+  zoneName: string;
+  abilityId: string;
+  abilityName: string;
+  sourceName: string;
+  targetName: string;
+  damage?: number;
+}
+
+interface LocalLogSegment {
+  id: string;
+  zoneName: string;
+  start: number;
+  end: number;
+  hits: LocalLogHit[];
+}
+
+function compactTime(timestamp: number) {
+  return new Date(timestamp).toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+function extractLocalLogHits(text: string): { hits: LocalLogHit[]; skippedRows: ParseReport["skippedRows"] } {
   const skippedRows: ParseReport["skippedRows"] = [];
-  const rawHits: Array<{ row: number; timestamp: number; abilityId: string; abilityName: string; targetName: string; damage?: number }> = [];
+  const hits: LocalLogHit[] = [];
+  let zoneName = "未知区域";
   const lines = text.split(/\r?\n/);
 
   lines.forEach((line, index) => {
@@ -212,6 +237,10 @@ function parseLocalCombatLog(text: string, fileName = "本地日志"): { events:
     const trimmed = line.trim();
     if (!trimmed) return;
     const parts = trimmed.split("|");
+    if (parts[0] === "01") {
+      zoneName = parts[3] || zoneName;
+      return;
+    }
     if (parts.length < 8) {
       skippedRows.push({ row, reason: "不是可识别的分隔日志行", raw: line });
       return;
@@ -226,28 +255,65 @@ function parseLocalCombatLog(text: string, fileName = "本地日志"): { events:
     }
     const abilityId = parts[4] || "";
     const abilityName = parts[5] || parts[4] || "未知技能";
+    const sourceName = parts[3] || "";
     const targetName = parts[7] || "";
     const damage = parts.slice(8, 18).map(parsePossibleDamage).find((value): value is number => value !== undefined);
     if (!targetName || (!abilityId && !abilityName)) {
       skippedRows.push({ row, reason: "缺少技能或目标", raw: line });
       return;
     }
-    rawHits.push({ row, timestamp, abilityId, abilityName, targetName, damage });
+    hits.push({ row, timestamp, timestampText, zoneName, abilityId, abilityName, sourceName, targetName, damage });
   });
+  return { hits, skippedRows };
+}
 
-  rawHits.sort((a, b) => a.timestamp - b.timestamp);
-  const start = rawHits[0]?.timestamp ?? 0;
+function buildLocalLogSegments(hits: LocalLogHit[]): LocalLogSegment[] {
+  const sorted = [...hits]
+    .filter((hit) => !["冲刺", "传送"].includes(hit.abilityName))
+    .sort((a, b) => a.timestamp - b.timestamp);
+  const segments: LocalLogSegment[] = [];
+  let current: LocalLogSegment | null = null;
+
+  for (const hit of sorted) {
+    const shouldStart = !current || hit.zoneName !== current.zoneName || hit.timestamp - current.end > 120_000;
+    if (shouldStart) {
+      if (current && current.hits.length >= 5 && current.end - current.start >= 10_000) segments.push(current);
+      current = { id: `enc-${segments.length}-${hit.timestamp}`, zoneName: hit.zoneName, start: hit.timestamp, end: hit.timestamp, hits: [hit] };
+    } else if (current) {
+      current.hits.push(hit);
+      current.end = hit.timestamp;
+    }
+  }
+  if (current && current.hits.length >= 5 && current.end - current.start >= 10_000) segments.push(current);
+  return segments;
+}
+
+function optionForSegment(segment: LocalLogSegment): LogEncounterOption {
+  const duration = Math.round((segment.end - segment.start) / 1000);
+  return {
+    id: segment.id,
+    label: `${compactTime(segment.start)} - ${compactTime(segment.end)} · ${segment.zoneName} · ${segment.hits.length} 条`,
+    zoneName: segment.zoneName,
+    startTime: compactTime(segment.start),
+    endTime: compactTime(segment.end),
+    duration,
+    eventCount: segment.hits.length,
+  };
+}
+
+function eventsFromLocalHits(rawHits: LocalLogHit[], start: number): TimelineEvent[] {
+  const rawSorted = [...rawHits].sort((a, b) => a.timestamp - b.timestamp);
   const used = new Set<number>();
   const events: TimelineEvent[] = [];
 
-  for (let index = 0; index < rawHits.length; index += 1) {
+  for (let index = 0; index < rawSorted.length; index += 1) {
     if (used.has(index)) continue;
-    const base = rawHits[index];
+    const base = rawSorted[index];
     const group = [base];
     used.add(index);
-    for (let next = index + 1; next < rawHits.length; next += 1) {
+    for (let next = index + 1; next < rawSorted.length; next += 1) {
       if (used.has(next)) continue;
-      const candidate = rawHits[next];
+      const candidate = rawSorted[next];
       if (candidate.timestamp - base.timestamp > GROUP_WINDOW_MS) break;
       if (candidate.abilityId === base.abilityId || candidate.abilityName === base.abilityName) {
         group.push(candidate);
@@ -273,23 +339,34 @@ function parseLocalCombatLog(text: string, fileName = "本地日志"): { events:
       notes: `本地日志实验解析，命中 ${uniqueTargets.size} 个目标：${[...uniqueTargets].join("、")}`,
     });
   }
+  return events;
+}
+
+function parseLocalCombatLog(text: string, fileName = "本地日志", encounterId?: string): { events: TimelineEvent[]; report: ParseReport } {
+  const { hits, skippedRows } = extractLocalLogHits(text);
+  const segments = buildLocalLogSegments(hits);
+  const selected = segments.find((segment) => segment.id === encounterId) ?? segments[0];
+  const selectedHits = selected?.hits ?? hits;
+  const start = selected?.start ?? selectedHits[0]?.timestamp ?? 0;
+  const events = eventsFromLocalHits(selectedHits, start);
 
   return {
     events,
     report: {
       fileName,
       eventCount: events.length,
-      sheetName: "本地日志实验解析",
+      sheetName: selected ? `${selected.zoneName} ${compactTime(selected.start)}-${compactTime(selected.end)}` : "本地日志实验解析",
       recognizedColumns: ["21/22 ability lines", "timestamp", "ability", "target", "damage"],
       skippedRows,
+      encounters: segments.map(optionForSegment),
     },
   };
 }
 
-export function parseFFLogsText(text: string, fileName = "FFLogs / 本地日志"): { events: TimelineEvent[]; report: ParseReport } {
+export function parseFFLogsText(text: string, fileName = "FFLogs / 本地日志", encounterId?: string): { events: TimelineEvent[]; report: ParseReport } {
   try {
     return parseFFLogsJson(JSON.parse(text));
   } catch {
-    return parseLocalCombatLog(text, fileName);
+    return parseLocalCombatLog(text, fileName, encounterId);
   }
 }

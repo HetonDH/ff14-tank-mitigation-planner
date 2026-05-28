@@ -9,17 +9,19 @@ interface Props {
   file: File | null;
   logFile: File | null;
   logText: string;
+  logEncounterId: string;
   report: ParseReport | null;
   events: TimelineEvent[];
   onFileChange: (file: File | null) => void;
   onLogFileChange: (file: File | null) => void;
   onLogTextChange: (text: string) => void;
+  onLogEncounterChange: (id: string) => void;
   onRead: () => void;
   onReadLog: () => void;
   onUseExample: () => void;
 }
 
-export function ImportPanel({ language, file, logFile, logText, report, events, onFileChange, onLogFileChange, onLogTextChange, onRead, onReadLog, onUseExample }: Props) {
+export function ImportPanel({ language, file, logFile, logText, logEncounterId, report, events, onFileChange, onLogFileChange, onLogTextChange, onLogEncounterChange, onRead, onReadLog, onUseExample }: Props) {
   const zh = language === "zh";
   const { eventTypeLabels, severityLabels, timelineTargetLabels } = labelsFor(language);
   return (
@@ -42,8 +44,18 @@ export function ImportPanel({ language, file, logFile, logText, report, events, 
         <button className="btn mt-2 w-full" onClick={onReadLog} disabled={!logFile && !logText.trim()}>
           <Upload size={16} />{zh ? "读取日志生成时间轴" : "Read log timeline"}
         </button>
+        {report?.encounters?.length ? (
+          <label className="mt-2 block text-xs text-slate-400">
+            {zh ? "选择日志片段" : "Log segment"}
+            <select className="field mt-1 w-full" value={logEncounterId || report.encounters[0]?.id || ""} onChange={(event) => onLogEncounterChange(event.target.value)}>
+              {report.encounters.map((encounter) => (
+                <option key={encounter.id} value={encounter.id}>{encounter.label}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <div className="mt-2 text-xs text-slate-400">
-          {zh ? "会按 0.9 秒窗口合并同技能多目标伤害，避免八人分别判定被拆成八条。" : "Merges same-skill multi-target hits within 0.9s so party damage is not split into eight rows."}
+          {zh ? "会先按区域和时间间隔拆分日志片段，再按 0.9 秒窗口合并同技能多目标伤害。" : "Splits the log by zone/time gaps, then merges same-skill multi-target hits within 0.9s."}
         </div>
       </div>
       {report && (

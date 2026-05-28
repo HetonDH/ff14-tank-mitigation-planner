@@ -31,4 +31,15 @@ export interface ParseReport {
   sheetName: string;
   recognizedColumns: string[];
   skippedRows: SkippedRow[];
+  encounters?: LogEncounterOption[];
+}
+
+export interface LogEncounterOption {
+  id: string;
+  label: string;
+  zoneName: string;
+  startTime: string;
+  endTime: string;
+  duration: number;
+  eventCount: number;
 }
