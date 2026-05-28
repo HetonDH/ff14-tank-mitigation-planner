@@ -7,21 +7,25 @@ import type { UiLanguage } from "../types/ui";
 interface Props {
   language: UiLanguage;
   file: File | null;
+  fflogsUrl: string;
   logFile: File | null;
   logText: string;
   logEncounterId: string;
+  isReadingLog: boolean;
   report: ParseReport | null;
   events: TimelineEvent[];
   onFileChange: (file: File | null) => void;
+  onFFLogsUrlChange: (url: string) => void;
   onLogFileChange: (file: File | null) => void;
   onLogTextChange: (text: string) => void;
   onLogEncounterChange: (id: string) => void;
   onRead: () => void;
+  onImportFFLogsUrl: () => void;
   onReadLog: () => void;
   onUseExample: () => void;
 }
 
-export function ImportPanel({ language, file, logFile, logText, logEncounterId, report, events, onFileChange, onLogFileChange, onLogTextChange, onLogEncounterChange, onRead, onReadLog, onUseExample }: Props) {
+export function ImportPanel({ language, file, fflogsUrl, logFile, logText, logEncounterId, isReadingLog, report, events, onFileChange, onFFLogsUrlChange, onLogFileChange, onLogTextChange, onLogEncounterChange, onRead, onImportFFLogsUrl, onReadLog, onUseExample }: Props) {
   const zh = language === "zh";
   const { eventTypeLabels, severityLabels, timelineTargetLabels } = labelsFor(language);
   return (
@@ -33,16 +37,29 @@ export function ImportPanel({ language, file, logFile, logText, logEncounterId, 
         <button className="btn flex-1" onClick={onUseExample}>{zh ? "使用示例时间轴" : "Use example"}</button>
       </div>
       <div className="mt-4 rounded-md border border-cyan-500/20 bg-cyan-500/5 p-3">
-        <div className="mb-2 text-sm font-semibold text-cyan-100">{zh ? "FFLogs / 本地日志" : "FFLogs / local log"}</div>
+        <div className="mb-2 text-sm font-semibold text-cyan-100">{zh ? "FFLogs 标准导入" : "FFLogs standard import"}</div>
+        <input
+          className="field w-full"
+          value={fflogsUrl}
+          onChange={(event) => onFFLogsUrlChange(event.target.value)}
+          placeholder="https://www.fflogs.com/reports/ABC123#fight=5"
+        />
+        <button className="btn mt-2 w-full" onClick={onImportFFLogsUrl} disabled={isReadingLog || !fflogsUrl.trim()}>
+          <Upload size={16} />{isReadingLog ? (zh ? "正在导入 FFLogs..." : "Importing FFLogs...") : (zh ? "按报告链接导入" : "Import report URL")}
+        </button>
+        <div className="mt-2 text-xs text-slate-400">
+          {zh ? "参考 healerbook：报告链接会交给 Worker 代理读取 FFLogs 标准事件流；未配置代理时请先用下方 JSON/本地日志兜底。" : "Healerbook-style flow: report URLs go through a Worker proxy for standard FFLogs events. Without a proxy, use JSON/local log below."}
+        </div>
+        <div className="mt-4 border-t border-cyan-500/10 pt-3 text-sm font-semibold text-cyan-100">{zh ? "JSON / 本地日志兜底" : "JSON / local log fallback"}</div>
         <input className="field w-full" type="file" accept=".json,.txt,.log" onChange={(event) => onLogFileChange(event.target.files?.[0] ?? null)} />
         <textarea
           className="field mt-2 h-24 w-full resize-none text-xs"
           value={logText}
           onChange={(event) => onLogTextChange(event.target.value)}
-          placeholder={zh ? "粘贴 FFLogs API JSON，或上传 .json/.txt/.log。第一版优先支持 FFLogs events JSON。" : "Paste FFLogs API JSON, or upload .json/.txt/.log. The first version focuses on FFLogs events JSON."}
+          placeholder={zh ? "粘贴 FFLogs API JSON，或上传 .json/.txt/.log。本地日志只作为实验兜底。" : "Paste FFLogs API JSON, or upload .json/.txt/.log. Local logs are experimental fallback only."}
         />
-        <button className="btn mt-2 w-full" onClick={onReadLog} disabled={!logFile && !logText.trim()}>
-          <Upload size={16} />{zh ? "读取日志生成时间轴" : "Read log timeline"}
+        <button className="btn mt-2 w-full" onClick={onReadLog} disabled={isReadingLog || (!logFile && !logText.trim())}>
+          <Upload size={16} />{isReadingLog ? (zh ? "正在读取日志..." : "Reading log...") : (zh ? "读取日志生成时间轴" : "Read log timeline")}
         </button>
         {report?.encounters?.length ? (
           <label className="mt-2 block text-xs text-slate-400">

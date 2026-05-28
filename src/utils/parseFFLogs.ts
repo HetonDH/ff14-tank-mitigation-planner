@@ -13,7 +13,10 @@ const TANK_JOB_BY_LOG_TYPE: Record<string, TankJob> = {
 };
 
 const AUTO_ATTACK_PATTERN = /^(攻击|attack|attacke|attaque|攻撃|공격|unknown_[0-9a-f]{4})$/i;
+const UNKNOWN_ABILITY_PATTERN = /^unknown_[0-9a-f]+$/i;
+const HIGH_END_ZONE_PATTERN = /(阿卡狄亚|阿卡迪亚|至天之座|登天斗技场|轻量级|中量级|重量级|零式|绝境战|歼灭战|讨伐战|Arcadion|AAC|Savage|Ultimate|Extreme)/i;
 const GROUP_WINDOW_MS = 900;
+const AUTO_WINDOW_GAP_MS = 9_000;
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
@@ -202,11 +205,27 @@ function parsePossibleDamage(value: string): number | undefined {
   return undefined;
 }
 
+function parseActionEffectDamage(parts: string[]): number | undefined {
+  const damages: number[] = [];
+  for (let index = 8; index <= 22; index += 2) {
+    const effectType = parts[index] ?? "";
+    const amountText = parts[index + 1] ?? "";
+    if (!/^[0-9a-f]+$/i.test(effectType) || !/^[0-9a-f]{4,8}$/i.test(amountText)) continue;
+    if (!effectType.endsWith("3")) continue;
+    const amount = Number.parseInt(amountText.slice(0, 4), 16);
+    if (amount > 0) damages.push(amount);
+  }
+  return damages.length ? Math.max(...damages) : undefined;
+}
+
 interface LocalLogHit {
   row: number;
   timestamp: number;
   timestampText: string;
+  zoneId: string;
   zoneName: string;
+  sourceId: string;
+  targetId: string;
   abilityId: string;
   abilityName: string;
   sourceName: string;
@@ -216,95 +235,258 @@ interface LocalLogHit {
 
 interface LocalLogSegment {
   id: string;
+  zoneId: string;
   zoneName: string;
   start: number;
   end: number;
   hits: LocalLogHit[];
 }
 
+interface LocalLogSegmentSummary {
+  id: string;
+  zoneId: string;
+  zoneName: string;
+  start: number;
+  end: number;
+  eventCount: number;
+}
+
 function compactTime(timestamp: number) {
   return new Date(timestamp).toLocaleTimeString("zh-CN", { hour12: false });
 }
 
-function extractLocalLogHits(text: string): { hits: LocalLogHit[]; skippedRows: ParseReport["skippedRows"] } {
-  const skippedRows: ParseReport["skippedRows"] = [];
-  const hits: LocalLogHit[] = [];
-  let zoneName = "未知区域";
-  const lines = text.split(/\r?\n/);
+function segmentId(zoneId: string, zoneName: string, start: number) {
+  return `enc-${zoneId || "zone"}-${start}-${zoneName.replace(/[^\w\u4e00-\u9fa5-]+/g, "_").slice(0, 24)}`;
+}
 
-  lines.forEach((line, index) => {
-    const row = index + 1;
+function isHighEndZone(zoneName: string) {
+  return HIGH_END_ZONE_PATTERN.test(zoneName);
+}
+
+function extractDutyNameFromSystemLine(line: string): { type: "start" | "end" | "pop"; name: string } | null {
+  const parts = line.split("|");
+  if (parts[0] !== "00") return null;
+  const message = parts.slice(3, -1).join("|");
+  const popMatch = message.match(/Duty pop:\s*([^|]+)/i);
+  if (popMatch?.[1]) return { type: "pop", name: popMatch[1].trim() };
+  const startMatch = message.match(/[“「](.+?)[”」]任务开始/);
+  if (startMatch?.[1]) return { type: "start", name: startMatch[1].trim() };
+  const endMatch = message.match(/[“「](.+?)[”」]任务结束/);
+  if (endMatch?.[1]) return { type: "end", name: endMatch[1].trim() };
+  return null;
+}
+
+function parseLocalLogLine(line: string, row: number, zoneId: string, zoneName: string): { zoneId: string; zoneName: string; hit?: LocalLogHit; skipped?: ParseReport["skippedRows"][number] } {
     const trimmed = line.trim();
-    if (!trimmed) return;
+    if (!trimmed) return { zoneId, zoneName };
     const parts = trimmed.split("|");
     if (parts[0] === "01") {
-      zoneName = parts[3] || zoneName;
-      return;
+      return { zoneId: parts[2] || zoneId, zoneName: parts[3] || zoneName };
     }
     if (parts.length < 8) {
-      skippedRows.push({ row, reason: "不是可识别的分隔日志行", raw: line });
-      return;
+      return { zoneId, zoneName, skipped: { row, reason: "不是可识别的分隔日志行", raw: line } };
     }
     const type = parts[0];
-    if (type !== "21" && type !== "22" && type.toLowerCase() !== "damage") return;
+    if (type !== "21" && type !== "22" && type.toLowerCase() !== "damage") return { zoneId, zoneName };
     const timestampText = parts[1] ?? "";
     const timestamp = Date.parse(timestampText);
     if (!Number.isFinite(timestamp)) {
-      skippedRows.push({ row, reason: "无法识别时间戳", raw: line });
-      return;
+      return { zoneId, zoneName, skipped: { row, reason: "无法识别时间戳", raw: line } };
     }
     const abilityId = parts[4] || "";
     const abilityName = parts[5] || parts[4] || "未知技能";
+    const sourceId = parts[2] || "";
+    const targetId = parts[6] || "";
     const sourceName = parts[3] || "";
     const targetName = parts[7] || "";
-    const damage = parts.slice(8, 18).map(parsePossibleDamage).find((value): value is number => value !== undefined);
+    const damage = parseActionEffectDamage(parts);
     if (!targetName || (!abilityId && !abilityName)) {
-      skippedRows.push({ row, reason: "缺少技能或目标", raw: line });
-      return;
+      return { zoneId, zoneName, skipped: { row, reason: "缺少技能或目标", raw: line } };
     }
-    hits.push({ row, timestamp, timestampText, zoneName, abilityId, abilityName, sourceName, targetName, damage });
-  });
-  return { hits, skippedRows };
+    return { zoneId, zoneName, hit: { row, timestamp, timestampText, zoneId, zoneName, sourceId, targetId, abilityId, abilityName, sourceName, targetName, damage } };
 }
 
-function buildLocalLogSegments(hits: LocalLogHit[]): LocalLogSegment[] {
-  const sorted = [...hits]
-    .filter((hit) => !["冲刺", "传送"].includes(hit.abilityName))
-    .sort((a, b) => a.timestamp - b.timestamp);
-  const segments: LocalLogSegment[] = [];
-  let current: LocalLogSegment | null = null;
+function isPlayerActorId(id: string) {
+  return /^10[0-9a-f]{6}$/i.test(id);
+}
 
-  for (const hit of sorted) {
-    const shouldStart = !current || hit.zoneName !== current.zoneName || hit.timestamp - current.end > 120_000;
+function isEnemyActorId(id: string) {
+  return /^4[0-9a-f]{7}$/i.test(id);
+}
+
+function isBossTimelineHit(hit: LocalLogHit) {
+  return isEnemyActorId(hit.sourceId) && isPlayerActorId(hit.targetId);
+}
+
+function filterHighEndTimelineHits(hits: LocalLogHit[]) {
+  const sourceScores = new Map<string, { id: string; name: string; named: number; auto: number; maxDamage: number }>();
+  for (const hit of hits) {
+    const score = sourceScores.get(hit.sourceId) ?? { id: hit.sourceId, name: hit.sourceName || "未知敌人", named: 0, auto: 0, maxDamage: 0 };
+    if (AUTO_ATTACK_PATTERN.test(hit.abilityName)) score.auto += 1;
+    else if (!UNKNOWN_ABILITY_PATTERN.test(hit.abilityName)) score.named += 1;
+    score.maxDamage = Math.max(score.maxDamage, hit.damage ?? 0);
+    sourceScores.set(hit.sourceId, score);
+  }
+  const bossSourceIds = new Set(
+    [...sourceScores.values()]
+      .filter((source) => source.named >= 1 || source.auto >= 2 || source.maxDamage >= 20000)
+      .map((source) => source.id),
+  );
+
+  return hits.filter((hit) => {
+    if (UNKNOWN_ABILITY_PATTERN.test(hit.abilityName)) return false;
+    if (AUTO_ATTACK_PATTERN.test(hit.abilityName)) return bossSourceIds.has(hit.sourceId);
+    return true;
+  });
+}
+
+function scanLocalCombatLog(text: string, encounterId?: string): { segments: LocalLogSegmentSummary[]; selected?: LocalLogSegment; skippedRows: ParseReport["skippedRows"] } {
+  const segments: LocalLogSegmentSummary[] = [];
+  const skippedRows: ParseReport["skippedRows"] = [];
+  let current: LocalLogSegment | null = null;
+  let selected: LocalLogSegment | undefined;
+  let latestValid: LocalLogSegment | undefined;
+  let zoneId = "";
+  let zoneName = "未知区域";
+  let pendingDutyName = "";
+  let activeDutyName = "";
+  let row = 0;
+  let cursor = 0;
+
+  function keepSkipped(skipped: ParseReport["skippedRows"][number]) {
+    if (skippedRows.length < 50) skippedRows.push(skipped);
+  }
+
+  function finalizeCurrent() {
+    if (!current || current.hits.length < 5 || current.end - current.start < 10_000) {
+      current = null;
+      return;
+    }
+    const summary: LocalLogSegmentSummary = {
+      id: current.id,
+      zoneId: current.zoneId,
+      zoneName: current.zoneName,
+      start: current.start,
+      end: current.end,
+      eventCount: current.hits.length,
+    };
+    segments.push(summary);
+    if (current.id === encounterId) selected = current;
+    latestValid = current;
+    current = null;
+  }
+
+  while (cursor <= text.length) {
+    const nextBreak = text.indexOf("\n", cursor);
+    const line = nextBreak === -1 ? text.slice(cursor) : text.slice(cursor, nextBreak);
+    cursor = nextBreak === -1 ? text.length + 1 : nextBreak + 1;
+    row += 1;
+
+    const dutySignal = extractDutyNameFromSystemLine(line);
+    if (dutySignal?.type === "pop") {
+      pendingDutyName = dutySignal.name;
+    } else if (dutySignal?.type === "start") {
+      activeDutyName = dutySignal.name;
+      pendingDutyName = "";
+    } else if (dutySignal?.type === "end" && dutySignal.name === activeDutyName) {
+      activeDutyName = "";
+    }
+
+    const parsed = parseLocalLogLine(line, row, zoneId, zoneName);
+    zoneId = parsed.zoneId;
+    zoneName = parsed.zoneName;
+    if (parsed.skipped) keepSkipped(parsed.skipped);
+    const hit = parsed.hit;
+    if (!hit || ["冲刺", "传送"].includes(hit.abilityName)) continue;
+    if (!isBossTimelineHit(hit)) continue;
+    if (!hit.damage || hit.damage <= 0) continue;
+    const dutyName = activeDutyName || pendingDutyName;
+    const effectiveZoneName = isHighEndZone(dutyName) ? dutyName : hit.zoneName;
+    if (!isHighEndZone(effectiveZoneName)) continue;
+    hit.zoneName = effectiveZoneName;
+    hit.zoneId = isHighEndZone(dutyName) ? `duty:${dutyName}` : hit.zoneId;
+
+    const shouldStart = !current || hit.zoneId !== current.zoneId || hit.zoneName !== current.zoneName;
     if (shouldStart) {
-      if (current && current.hits.length >= 5 && current.end - current.start >= 10_000) segments.push(current);
-      current = { id: `enc-${segments.length}-${hit.timestamp}`, zoneName: hit.zoneName, start: hit.timestamp, end: hit.timestamp, hits: [hit] };
+      finalizeCurrent();
+      current = { id: segmentId(hit.zoneId, hit.zoneName, hit.timestamp), zoneId: hit.zoneId, zoneName: hit.zoneName, start: hit.timestamp, end: hit.timestamp, hits: [hit] };
     } else if (current) {
       current.hits.push(hit);
       current.end = hit.timestamp;
     }
   }
-  if (current && current.hits.length >= 5 && current.end - current.start >= 10_000) segments.push(current);
-  return segments;
+  finalizeCurrent();
+
+  if (!encounterId) selected = latestValid;
+  return { segments, selected, skippedRows };
 }
 
-function optionForSegment(segment: LocalLogSegment): LogEncounterOption {
+function optionForSegment(segment: LocalLogSegmentSummary): LogEncounterOption {
   const duration = Math.round((segment.end - segment.start) / 1000);
   return {
     id: segment.id,
-    label: `${compactTime(segment.start)} - ${compactTime(segment.end)} · ${segment.zoneName} · ${segment.hits.length} 条`,
+    label: `${compactTime(segment.start)} - ${compactTime(segment.end)} · ${segment.zoneName} · ${segment.eventCount} 条`,
     zoneName: segment.zoneName,
     startTime: compactTime(segment.start),
     endTime: compactTime(segment.end),
     duration,
-    eventCount: segment.hits.length,
+    eventCount: segment.eventCount,
   };
 }
 
-function eventsFromLocalHits(rawHits: LocalLogHit[], start: number): TimelineEvent[] {
-  const rawSorted = [...rawHits].sort((a, b) => a.timestamp - b.timestamp);
-  const used = new Set<number>();
+function buildAutoAttackEvents(autoHits: LocalLogHit[], start: number): TimelineEvent[] {
   const events: TimelineEvent[] = [];
+  const hitsBySource = new Map<string, LocalLogHit[]>();
+  for (const hit of autoHits) {
+    const key = `${hit.sourceId}:${hit.abilityId || hit.abilityName}`;
+    hitsBySource.set(key, [...(hitsBySource.get(key) ?? []), hit]);
+  }
+
+  for (const hits of hitsBySource.values()) {
+    const sorted = [...hits].sort((a, b) => a.timestamp - b.timestamp);
+    let group: LocalLogHit[] = [];
+
+    function flush() {
+      if (!group.length) return;
+      const first = group[0];
+      const last = group[group.length - 1];
+      const damages = group.map((hit) => hit.damage ?? 0).filter((damage) => damage > 0);
+      const maxDamage = Math.max(...damages, 0);
+      const averageDamage = damages.length ? Math.round(damages.reduce((sum, damage) => sum + damage, 0) / damages.length) : 0;
+      const uniqueTargets = new Set(group.map((hit) => hit.targetName));
+      const duration = Math.max(3, Math.round((last.timestamp - first.timestamp) / 1000) + 3);
+      events.push({
+        id: `local-log-auto-${first.sourceId}-${first.timestamp}-${events.length}`,
+        time: Math.round((first.timestamp - start) / 10) / 100,
+        name: "平 A",
+        damage: averageDamage || maxDamage || undefined,
+        type: "auto",
+        damageType: "all",
+        target: uniqueTargets.size >= 2 ? "bothTanks" : "MT",
+        duration,
+        severity: maxDamage >= 50000 ? "high" : maxDamage >= 20000 ? "medium" : "low",
+        source: "localLog",
+        sourceId: first.abilityId,
+        sourceRow: first.row,
+        notes: `平 A 窗口：来源 ${first.sourceName}，${group.length} 次，平均 ${averageDamage.toLocaleString()}，最高 ${maxDamage.toLocaleString()}，目标 ${[...uniqueTargets].join("、")}`,
+      });
+      group = [];
+    }
+
+    for (const hit of sorted) {
+      const previous = group[group.length - 1];
+      if (previous && hit.timestamp - previous.timestamp > AUTO_WINDOW_GAP_MS) flush();
+      group.push(hit);
+    }
+    flush();
+  }
+
+  return events;
+}
+
+function buildAbilityProfiles(rawSorted: LocalLogHit[]) {
+  const used = new Set<number>();
+  const profiles = new Map<string, { maxTargets: number; maxDamage: number }>();
 
   for (let index = 0; index < rawSorted.length; index += 1) {
     if (used.has(index)) continue;
@@ -315,15 +497,49 @@ function eventsFromLocalHits(rawHits: LocalLogHit[], start: number): TimelineEve
       if (used.has(next)) continue;
       const candidate = rawSorted[next];
       if (candidate.timestamp - base.timestamp > GROUP_WINDOW_MS) break;
-      if (candidate.abilityId === base.abilityId || candidate.abilityName === base.abilityName) {
+      if (candidate.abilityName === base.abilityName) {
+        group.push(candidate);
+        used.add(next);
+      }
+    }
+    const uniqueTargetCount = new Set(group.map((hit) => hit.targetName)).size;
+    const maxDamage = Math.max(...group.map((hit) => hit.damage ?? 0), 0);
+    const current = profiles.get(base.abilityName) ?? { maxTargets: 0, maxDamage: 0 };
+    profiles.set(base.abilityName, {
+      maxTargets: Math.max(current.maxTargets, uniqueTargetCount),
+      maxDamage: Math.max(current.maxDamage, maxDamage),
+    });
+  }
+
+  return profiles;
+}
+
+function eventsFromLocalHits(rawHits: LocalLogHit[], start: number): TimelineEvent[] {
+  const autoHits = rawHits.filter((hit) => AUTO_ATTACK_PATTERN.test(hit.abilityName));
+  const rawSorted = rawHits.filter((hit) => !AUTO_ATTACK_PATTERN.test(hit.abilityName)).sort((a, b) => a.timestamp - b.timestamp);
+  const abilityProfiles = buildAbilityProfiles(rawSorted);
+  const used = new Set<number>();
+  const events: TimelineEvent[] = buildAutoAttackEvents(autoHits, start);
+
+  for (let index = 0; index < rawSorted.length; index += 1) {
+    if (used.has(index)) continue;
+    const base = rawSorted[index];
+    const group = [base];
+    used.add(index);
+    for (let next = index + 1; next < rawSorted.length; next += 1) {
+      if (used.has(next)) continue;
+      const candidate = rawSorted[next];
+      if (candidate.timestamp - base.timestamp > GROUP_WINDOW_MS) break;
+      if (candidate.abilityName === base.abilityName) {
         group.push(candidate);
         used.add(next);
       }
     }
     const uniqueTargets = new Set(group.map((hit) => hit.targetName));
     const maxDamage = Math.max(...group.map((hit) => hit.damage ?? 0), 0);
-    const isAuto = AUTO_ATTACK_PATTERN.test(base.abilityName);
-    const type: TimelineEventType = isAuto ? "auto" : uniqueTargets.size >= 5 ? "aoe" : uniqueTargets.size >= 2 ? "spreadTankbuster" : "singleTankbuster";
+    const profile = abilityProfiles.get(base.abilityName);
+    const profileTargetCount = profile?.maxTargets ?? uniqueTargets.size;
+    const type: TimelineEventType = profileTargetCount >= 5 ? "aoe" : profileTargetCount >= 2 ? "spreadTankbuster" : "singleTankbuster";
     events.push({
       id: `local-log-${base.timestamp}-${base.abilityId || events.length}`,
       time: Math.round((base.timestamp - start) / 10) / 100,
@@ -336,29 +552,33 @@ function eventsFromLocalHits(rawHits: LocalLogHit[], start: number): TimelineEve
       source: "localLog",
       sourceId: base.abilityId,
       sourceRow: base.row,
-      notes: `本地日志实验解析，命中 ${uniqueTargets.size} 个目标：${[...uniqueTargets].join("、")}`,
+      notes: `本地日志实验解析，来源 ${base.sourceName}，命中 ${uniqueTargets.size} 个玩家：${[...uniqueTargets].join("、")}`,
     });
   }
-  return events;
+  return events.sort((a, b) => a.time - b.time);
 }
 
 function parseLocalCombatLog(text: string, fileName = "本地日志", encounterId?: string): { events: TimelineEvent[]; report: ParseReport } {
-  const { hits, skippedRows } = extractLocalLogHits(text);
-  const segments = buildLocalLogSegments(hits);
-  const selected = segments.find((segment) => segment.id === encounterId) ?? segments[0];
-  const selectedHits = selected?.hits ?? hits;
+  const { segments, selected, skippedRows } = scanLocalCombatLog(text, encounterId);
+  const selectedHits = selected ? filterHighEndTimelineHits(selected.hits) : [];
   const start = selected?.start ?? selectedHits[0]?.timestamp ?? 0;
   const events = eventsFromLocalHits(selectedHits, start);
+  const noHighEndMessage = !segments.length
+    ? [{ row: 0, reason: "未识别到零式/八人高难/大型任务记录。请确认日志中包含阿卡狄亚、零式、绝境战、歼灭战或 Savage/Ultimate/Extreme 区域。" }]
+    : [];
+  const noEventMessage = segments.length && !events.length
+    ? [{ row: 0, reason: "已识别到大型任务片段，但没有解析出敌方对玩家的伤害事件。可能需要补充该副本的日志格式或区域关键词。" }]
+    : [];
 
   return {
     events,
     report: {
       fileName,
       eventCount: events.length,
-      sheetName: selected ? `${selected.zoneName} ${compactTime(selected.start)}-${compactTime(selected.end)}` : "本地日志实验解析",
+      sheetName: selected ? `${selected.zoneName} ${compactTime(selected.start)}-${compactTime(selected.end)}` : "本地日志片段扫描",
       recognizedColumns: ["21/22 ability lines", "timestamp", "ability", "target", "damage"],
-      skippedRows,
-      encounters: segments.map(optionForSegment),
+      skippedRows: [...noHighEndMessage, ...noEventMessage, ...(skippedRows.length >= 50 ? [...skippedRows, { row: 0, reason: "跳过行较多，仅显示前 50 条。" }] : skippedRows)],
+      encounters: [...segments].reverse().map(optionForSegment),
     },
   };
 }

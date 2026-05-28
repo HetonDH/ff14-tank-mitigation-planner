@@ -16,6 +16,7 @@ import type { AssignmentTarget, MitigationAssignment, PlannerSettings, PlannerWa
 import type { ParseReport, TimelineEvent } from "./types/timeline";
 import { parseTimelineFile } from "./utils/parseTimeline";
 import { parseFFLogsFile, parseFFLogsText } from "./utils/parseFFLogs";
+import { importFFLogsReportUrl } from "./utils/fflogsReport";
 import { downloadJson, readJsonFile } from "./utils/exportImport";
 import type { UiLanguage } from "./types/ui";
 
@@ -32,9 +33,11 @@ const initialSettings: PlannerSettings = {
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
+  const [fflogsUrl, setFflogsUrl] = useState("");
   const [logFile, setLogFile] = useState<File | null>(null);
   const [logText, setLogText] = useState("");
   const [logEncounterId, setLogEncounterId] = useState("");
+  const [isReadingLog, setIsReadingLog] = useState(false);
   const [report, setReport] = useState<ParseReport | null>(null);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [autoAssignments, setAutoAssignments] = useState<MitigationAssignment[]>([]);
@@ -71,18 +74,53 @@ function App() {
     setSelectedEvent(null);
   }
 
-  async function readLogTimeline() {
-    const parsed = logFile
-      ? await parseFFLogsFile(logFile, logEncounterId || undefined)
-      : parseFFLogsText(logText, "粘贴日志", logEncounterId || undefined);
-    const firstEncounterId = parsed.report.encounters?.[0]?.id ?? "";
-    if (!logEncounterId && firstEncounterId) setLogEncounterId(firstEncounterId);
-    setEvents(parsed.events);
-    setReport(parsed.report);
-    setAutoAssignments([]);
-    setManualAssignments([]);
-    setWarnings([]);
-    setSelectedEvent(null);
+  async function readLogTimeline(encounterId = logEncounterId) {
+    setIsReadingLog(true);
+    try {
+      const parsed = logFile
+        ? await parseFFLogsFile(logFile, encounterId || undefined)
+        : parseFFLogsText(logText, "粘贴日志", encounterId || undefined);
+      const firstEncounterId = parsed.report.encounters?.[0]?.id ?? "";
+      if (!encounterId && firstEncounterId) setLogEncounterId(firstEncounterId);
+      setEvents(parsed.events);
+      setReport(parsed.report);
+      setAutoAssignments([]);
+      setManualAssignments([]);
+      setWarnings([]);
+      setSelectedEvent(null);
+    } finally {
+      setIsReadingLog(false);
+    }
+  }
+
+  async function importFFLogsUrlTimeline() {
+    setIsReadingLog(true);
+    try {
+      const parsed = await importFFLogsReportUrl(fflogsUrl);
+      setEvents(parsed.events);
+      setReport(parsed.report);
+      setLogEncounterId("");
+      setAutoAssignments([]);
+      setManualAssignments([]);
+      setWarnings([]);
+      setSelectedEvent(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : language === "zh" ? "FFLogs 导入失败。" : "FFLogs import failed.";
+      setReport({
+        fileName: "FFLogs 报告链接",
+        eventCount: 0,
+        sheetName: "FFLogs",
+        recognizedColumns: ["reportCode", "fightId"],
+        skippedRows: [{ row: 0, reason: message }],
+      });
+    } finally {
+      setIsReadingLog(false);
+    }
+  }
+
+  async function selectLogEncounter(encounterId: string) {
+    setLogEncounterId(encounterId);
+    await readLogTimeline(encounterId);
   }
 
   function useExample() {
@@ -235,7 +273,7 @@ function App() {
           onSettingsChange={(next) => { setSettings(next); setAutoAssignments([]); }}
         />
       }
-      left={<ImportPanel language={language} file={file} logFile={logFile} logText={logText} logEncounterId={logEncounterId} report={report} events={events} onFileChange={setFile} onLogFileChange={(nextFile) => { setLogFile(nextFile); setLogEncounterId(""); }} onLogTextChange={(text) => { setLogText(text); setLogEncounterId(""); }} onLogEncounterChange={setLogEncounterId} onRead={readTimeline} onReadLog={readLogTimeline} onUseExample={useExample} />}
+      left={<ImportPanel language={language} file={file} fflogsUrl={fflogsUrl} logFile={logFile} logText={logText} logEncounterId={logEncounterId} isReadingLog={isReadingLog} report={report} events={events} onFileChange={setFile} onFFLogsUrlChange={setFflogsUrl} onLogFileChange={(nextFile) => { setLogFile(nextFile); setLogEncounterId(""); }} onLogTextChange={(text) => { setLogText(text); setLogEncounterId(""); }} onLogEncounterChange={selectLogEncounter} onRead={readTimeline} onImportFFLogsUrl={importFFLogsUrlTimeline} onReadLog={() => readLogTimeline()} onUseExample={useExample} />}
       center={
         <div className="space-y-3">
           <TimelineView language={language} events={events} assignments={assignments} maxTime={maxTime} onSelectEvent={setSelectedEvent} onDropSkill={addManualSkill} onMoveAssignment={moveManualAssignment} onDeleteManual={(id) => setManualAssignments((current) => current.filter((item) => item.id !== id))} skills={skills} />

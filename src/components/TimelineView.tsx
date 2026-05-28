@@ -26,8 +26,8 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
   const width = Math.max(900, safeMax * pixelsPerSecond);
   const tickStep = pixelsPerSecond >= 22 ? 1 : pixelsPerSecond >= 12 ? 5 : pixelsPerSecond >= 7 ? 10 : 30;
   const eventLaneTop = 36;
-  const eventHeight = 42;
-  const eventGap = 12;
+  const eventHeight = 56;
+  const eventGap = 16;
   const assignmentHeight = 34;
   const assignmentGap = 8;
 
@@ -47,8 +47,8 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
     .sort((a, b) => a.time - b.time)
     .map((event) => {
       const left = xFor(event.time);
-      const eventWidth = Math.max(112, (event.duration ?? 5) * pixelsPerSecond);
-      const lane = eventLaneEnds.findIndex((end) => left > end + 10);
+      const eventWidth = Math.max(event.type === "auto" ? 150 : 132, (event.duration ?? 5) * pixelsPerSecond);
+      const lane = eventLaneEnds.findIndex((end) => left > end + 14);
       const laneIndex = lane >= 0 ? lane : eventLaneEnds.length;
       eventLaneEnds[laneIndex] = left + eventWidth;
       return { event, left, width: eventWidth, top: eventLaneTop + laneIndex * (eventHeight + eventGap) };
@@ -134,13 +134,18 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
           {eventBlocks.map(({ event, left, top, width: eventWidth }) => (
             <button
               key={event.id}
-              className={`absolute rounded-md border px-2 py-1 text-left text-[11px] ${eventClass(event)}`}
+              className={`absolute overflow-hidden rounded-md border px-2 py-1 text-left text-[11px] leading-tight ${eventClass(event)}`}
               style={{ left, top, width: eventWidth, height: eventHeight }}
               onClick={() => onSelectEvent(event)}
+              title={`${event.name} · ${timelineTargetLabels[event.target]} · ${eventTypeLabels[event.type]} · ${formatTime(event.time)}${event.duration ? `-${formatTime(event.time + event.duration)}` : ""}${event.damage ? ` · ${Math.round(event.damage).toLocaleString()} ${zh ? "伤害" : "damage"}` : ""}${event.notes ? `\n${event.notes}` : ""}`}
             >
               <div className="truncate font-semibold">{event.name}</div>
-              <div>{timelineTargetLabels[event.target]} · {eventTypeLabels[event.type]}</div>
-              <div>{formatTime(event.time)}{event.damage ? ` · ${Math.round(event.damage).toLocaleString()} ${zh ? "伤害" : "damage"}` : ""}</div>
+              <div className="truncate">{timelineTargetLabels[event.target]} · {eventTypeLabels[event.type]}</div>
+              <div className="truncate">
+                {formatTime(event.time)}
+                {event.duration ? `-${formatTime(event.time + event.duration)}` : ""}
+              </div>
+              <div className="truncate">{event.damage ? `${Math.round(event.damage).toLocaleString()} ${zh ? "伤害" : "damage"}` : ""}</div>
             </button>
           ))}
 
