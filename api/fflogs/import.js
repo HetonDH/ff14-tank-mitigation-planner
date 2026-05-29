@@ -121,7 +121,7 @@ function localizeAbilities(abilities) {
   }));
 }
 
-async function getDamageTakenEvents(reportCode, start, end, region) {
+async function getEventsForSpec(reportCode, start, end, region, spec) {
   const query = `
     query GetEvents($code: String!, $startTime: Float, $endTime: Float, $dataType: EventDataType!, $hostilityType: HostilityType, $includeResources: Boolean, $limit: Int) {
       reportData {
@@ -153,9 +153,9 @@ async function getDamageTakenEvents(reportCode, start, end, region) {
         code: reportCode,
         startTime: currentStart,
         endTime: end,
-        dataType: "DamageTaken",
-        hostilityType: "Friendlies",
-        includeResources: true,
+        dataType: spec.dataType,
+        hostilityType: spec.hostilityType ?? "Friendlies",
+        includeResources: Boolean(spec.includeResources),
         limit: 10000,
       },
       region,
@@ -170,6 +170,18 @@ async function getDamageTakenEvents(reportCode, start, end, region) {
   }
 
   return events.sort((a, b) => a.timestamp - b.timestamp);
+}
+
+async function getReportEvents(reportCode, start, end, region) {
+  const specs = [
+    { dataType: "DamageTaken", includeResources: true },
+    { dataType: "Casts" },
+    { dataType: "Casts", hostilityType: "Enemies" },
+    { dataType: "Buffs" },
+    { dataType: "Debuffs" },
+  ];
+  const pages = await Promise.all(specs.map((spec) => getEventsForSpec(reportCode, start, end, region, spec)));
+  return pages.flat().sort((a, b) => a.timestamp - b.timestamp);
 }
 
 export default async function handler(req, res) {
@@ -211,7 +223,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    const events = await getDamageTakenEvents(reportCode, fight.startTime, fight.endTime, resolvedRegion);
+    const events = await getReportEvents(reportCode, fight.startTime, fight.endTime, resolvedRegion);
     json(res, 200, {
       title: `${report.title ?? "FFLogs"} - ${fight.name ?? `战斗 ${fightId}`}`,
       reportCode,

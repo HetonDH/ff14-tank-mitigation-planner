@@ -17,7 +17,7 @@ const UNKNOWN_ABILITY_PATTERN = /^unknown_[0-9a-f]+$/i;
 const HIGH_END_ZONE_PATTERN = /(阿卡狄亚|阿卡迪亚|至天之座|登天斗技场|轻量级|中量级|重量级|零式|绝境战|歼灭战|讨伐战|Arcadion|AAC|Savage|Ultimate|Extreme)/i;
 const GROUP_WINDOW_MS = 900;
 const AUTO_WINDOW_GAP_MS = 9_000;
-const MULTI_HIT_WINDOW_GAP = 3.4;
+const MECHANIC_CHAIN_MAX_IDLE = 8;
 const AUTO_TIMELINE_WINDOW_GAP = 9;
 
 function asArray(value: unknown): unknown[] {
@@ -104,14 +104,19 @@ function classifyEvent(targets: FFLogsActor[], tankIds: Set<number>, abilityName
   return { type: "aoe", target: uniqueCount >= 3 ? "party" : "self", severity: damage >= 90000 ? "high" : "medium" };
 }
 
-function compactRepeatedTimelineEvents(events: TimelineEvent[]): TimelineEvent[] {
+type ParsedTimelineEvent = TimelineEvent & {
+  targetSignature?: string;
+  sourceSignature?: string;
+};
+
+function compactRepeatedTimelineEvents(events: ParsedTimelineEvent[]): TimelineEvent[] {
   const sorted = [...events].sort((a, b) => a.time - b.time);
   const result: TimelineEvent[] = [];
   const used = new Set<string>();
 
   for (const event of sorted) {
     if (used.has(event.id)) continue;
-    const gapLimit = event.type === "auto" ? AUTO_TIMELINE_WINDOW_GAP : MULTI_HIT_WINDOW_GAP;
+    const gapLimit = event.type === "auto" ? AUTO_TIMELINE_WINDOW_GAP : MECHANIC_CHAIN_MAX_IDLE;
     const group = [event];
     used.add(event.id);
 
@@ -123,6 +128,8 @@ function compactRepeatedTimelineEvents(events: TimelineEvent[]): TimelineEvent[]
       if (candidate.name !== event.name) continue;
       if (candidate.type !== event.type) continue;
       if (candidate.target !== event.target) continue;
+      if (event.type !== "auto" && !compatibleSignature(candidate.targetSignature, event.targetSignature)) continue;
+      if (event.type !== "auto" && !compatibleSignature(candidate.sourceSignature, event.sourceSignature)) continue;
       group.push(candidate);
       used.add(candidate.id);
     }
@@ -149,6 +156,23 @@ function compactRepeatedTimelineEvents(events: TimelineEvent[]): TimelineEvent[]
   }
 
   return result.sort((a, b) => a.time - b.time);
+}
+
+function signature(values: Array<string | number | undefined>) {
+  return [...new Set(values.filter((value) => value !== undefined).map(String))].sort().join(".");
+}
+
+function compatibleSignature(left = "", right = "") {
+  if (left === right) return true;
+  const leftSet = new Set(left.split(".").filter(Boolean));
+  const rightSet = new Set(right.split(".").filter(Boolean));
+  if (!leftSet.size || !rightSet.size) return false;
+  const small = leftSet.size <= rightSet.size ? leftSet : rightSet;
+  const large = leftSet.size <= rightSet.size ? rightSet : leftSet;
+  for (const item of small) {
+    if (!large.has(item)) return false;
+  }
+  return true;
 }
 
 export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; report: ParseReport } {
@@ -205,7 +229,7 @@ export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; repor
     .filter((item) => item.damage >= 0)
     .sort((a, b) => a.event.timestamp - b.event.timestamp);
 
-  const timelineEvents: TimelineEvent[] = [];
+  const timelineEvents: ParsedTimelineEvent[] = [];
   const used = new Set<number>();
   const fightStartTime = input.fightStartTime ?? details[0]?.event.timestamp ?? 0;
 
@@ -230,6 +254,8 @@ export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; repor
     const ability = abilityMap.get(base.abilityId);
     const classification = classifyEvent(targets, tankIds, base.abilityName, maxDamage);
     const relativeTime = Math.max(0, Math.round((base.event.timestamp - fightStartTime) / 10) / 100);
+    const targetSignature = signature(targets.map((target) => target.id));
+    const sourceSignature = signature(group.map((item) => item.event.sourceID));
 
     timelineEvents.push({
       id: `fflogs-${base.event.timestamp}-${base.abilityId}-${timelineEvents.length}`,
@@ -243,6 +269,8 @@ export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; repor
       source: "fflogs",
       sourceId: String(base.abilityId || ""),
       notes: `FFLogs ability=${base.abilityId || "unknown"}，命中 ${targets.length} 人：${targets.map((target) => target.name).join("、")}`,
+      targetSignature,
+      sourceSignature,
     });
   }
 
