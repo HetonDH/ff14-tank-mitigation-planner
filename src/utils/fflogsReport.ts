@@ -1,5 +1,6 @@
+import { findSkill, tankSkills } from "../data/tankJobs";
 import type { ParseReport, TimelineEvent, TimelineEventType, TimelineTarget } from "../types/timeline";
-import type { DamageType } from "../types/mitigation";
+import type { DamageType, MitigationAssignment, PlayerRole, TankJob } from "../types/mitigation";
 import { parseFFLogsJson } from "./parseFFLogs";
 
 export interface ParsedFFLogsUrl {
@@ -7,6 +8,40 @@ export interface ParsedFFLogsUrl {
   fightId: number | null;
   isLastFight: boolean;
   region: "cn" | "www";
+}
+
+export interface ImportedTankInfo {
+  mtJob: TankJob;
+  stJob: TankJob;
+  mtName: string;
+  stName: string;
+}
+
+export interface FFLogsTankMitigationImport {
+  events: TimelineEvent[];
+  assignments: MitigationAssignment[];
+  tankInfo: ImportedTankInfo | null;
+  report: ParseReport;
+}
+
+const TANK_JOB_BY_LOG_TYPE: Record<string, TankJob> = {
+  paladin: "PLD",
+  gladiator: "PLD",
+  warrior: "WAR",
+  marauder: "WAR",
+  darkknight: "DRK",
+  "dark knight": "DRK",
+  gunbreaker: "GNB",
+};
+
+function toRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+function normalizeJob(value: unknown): TankJob | null {
+  const spaced = String(value ?? "").trim().toLowerCase();
+  const compact = spaced.replace(/\s+/g, "");
+  return TANK_JOB_BY_LOG_TYPE[compact] ?? TANK_JOB_BY_LOG_TYPE[spaced] ?? null;
 }
 
 export function parseFFLogsUrl(input: string): ParsedFFLogsUrl {
@@ -100,7 +135,7 @@ function timelineFromHealerbookPayload(payload: unknown): { events: TimelineEven
   };
 }
 
-export async function importFFLogsReportUrl(url: string): Promise<{ events: TimelineEvent[]; report: ParseReport }> {
+async function fetchFFLogsPayload(url: string): Promise<unknown> {
   const parsed = parseFFLogsUrl(url);
   if (!parsed.reportCode) throw new Error("无法识别 FFLogs 链接，请使用 reports 链接或报告代码。");
 
@@ -110,6 +145,127 @@ export async function importFFLogsReportUrl(url: string): Promise<{ events: Time
   if (!parsed.isLastFight && parsed.fightId !== null) params.set("fightId", String(parsed.fightId));
   const response = await fetch(`${proxyBase}/fflogs/import?${params.toString()}`);
   if (!response.ok) throw new Error(`FFLogs 导入失败：HTTP ${response.status}`);
-  const payload = await response.json();
+  return response.json();
+}
+
+export async function importFFLogsReportUrl(url: string): Promise<{ events: TimelineEvent[]; report: ParseReport }> {
+  const payload = await fetchFFLogsPayload(url);
   return timelineFromHealerbookPayload(payload) ?? parseFFLogsJson(payload);
+}
+
+function abilityIdOf(event: Record<string, unknown>) {
+  const ability = toRecord(event.ability);
+  return Number(event.abilityGameID ?? event.abilityID ?? ability.gameID ?? ability.id ?? 0);
+}
+
+function eventDamage(event: Record<string, unknown>) {
+  return Number(event.unmitigatedAmount ?? event.amount ?? 0) || 0;
+}
+
+function relativeSeconds(timestamp: unknown, fightStartTime: number) {
+  return Math.max(0, Math.round((Number(timestamp) - fightStartTime) / 10) / 100);
+}
+
+function assignmentTargetFor(skillId: string, casterRole: PlayerRole, targetRole: PlayerRole | null): MitigationAssignment["target"] {
+  const skill = findSkill(skillId);
+  if (!skill) return "self";
+  if (skill.targeting === "party") return "party";
+  if (skill.targeting === "bothTanks") return "bothTanks";
+  if (skill.canTargetPartner && targetRole) return targetRole;
+  if (skill.targeting === "selected" && targetRole) return targetRole;
+  return targetRole && targetRole !== casterRole ? targetRole : "self";
+}
+
+function parseFFLogsTankMitigations(payload: unknown, timeline: { events: TimelineEvent[]; report: ParseReport }): FFLogsTankMitigationImport {
+  const root = toRecord(payload);
+  const events = Array.isArray(root.events) ? root.events.map(toRecord) : [];
+  const actors = Array.isArray(root.actors) ? root.actors.map(toRecord) : [];
+  const fightStartTime = Number(root.fightStartTime ?? events[0]?.timestamp ?? 0) || 0;
+  const tankActors = actors
+    .map((actor) => ({ actor, job: normalizeJob(actor.subType ?? actor.type) }))
+    .filter((item): item is { actor: Record<string, unknown>; job: TankJob } => Boolean(item.job));
+  const tankIds = new Set(tankActors.map((item) => Number(item.actor.id)));
+  const damageTakenByTank = new Map<number, { hits: number; damage: number }>();
+
+  for (const event of events) {
+    if (event.type !== "damage" && event.type !== "calculateddamage") continue;
+    const targetId = Number(event.targetID);
+    if (!tankIds.has(targetId)) continue;
+    const current = damageTakenByTank.get(targetId) ?? { hits: 0, damage: 0 };
+    current.hits += 1;
+    current.damage += eventDamage(event);
+    damageTakenByTank.set(targetId, current);
+  }
+
+  const orderedTanks = [...tankActors].sort((a, b) => {
+    const aStats = damageTakenByTank.get(Number(a.actor.id)) ?? { hits: 0, damage: 0 };
+    const bStats = damageTakenByTank.get(Number(b.actor.id)) ?? { hits: 0, damage: 0 };
+    return bStats.hits - aStats.hits || bStats.damage - aStats.damage;
+  });
+  const mt = orderedTanks[0] ?? tankActors[0];
+  const st = orderedTanks[1] ?? tankActors.find((item) => item !== mt);
+  const roleByActorId = new Map<number, PlayerRole>();
+  if (mt) roleByActorId.set(Number(mt.actor.id), "MT");
+  if (st) roleByActorId.set(Number(st.actor.id), "ST");
+
+  const skillByActionId = new Map(tankSkills.filter((skill) => skill.actionId).map((skill) => [skill.actionId, skill]));
+  const importedAssignments: MitigationAssignment[] = [];
+  const seen = new Set<string>();
+
+  for (const event of events) {
+    if (event.type !== "cast") continue;
+    const sourceId = Number(event.sourceID);
+    const casterRole = roleByActorId.get(sourceId);
+    if (!casterRole) continue;
+    const skill = skillByActionId.get(abilityIdOf(event));
+    if (!skill) continue;
+    const targetRole = roleByActorId.get(Number(event.targetID)) ?? null;
+    const start = relativeSeconds(event.timestamp, fightStartTime);
+    const key = `${sourceId}:${skill.id}:${Math.round(start * 10)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    importedAssignments.push({
+      id: `log-${sourceId}-${skill.id}-${Math.round(start * 1000)}`,
+      skillId: skill.id,
+      skillName: skill.zhName,
+      casterRole,
+      casterJob: skill.job === "COMMON" ? (casterRole === "MT" ? mt?.job : st?.job) ?? "COMMON" : skill.job,
+      target: assignmentTargetFor(skill.id, casterRole, targetRole),
+      start,
+      end: start + skill.duration,
+      duration: skill.duration,
+      eventIds: timeline.events.filter((timelineEvent) => start <= timelineEvent.time && start + skill.duration >= timelineEvent.time).map((timelineEvent) => timelineEvent.id),
+      source: "log",
+    });
+  }
+
+  const tankInfo = mt && st
+    ? {
+      mtJob: mt.job,
+      stJob: st.job,
+      mtName: String(mt.actor.name ?? "MT"),
+      stName: String(st.actor.name ?? "ST"),
+    }
+    : null;
+
+  return {
+    events: timeline.events,
+    assignments: importedAssignments.sort((a, b) => a.start - b.start),
+    tankInfo,
+    report: {
+      ...timeline.report,
+      recognizedColumns: [...timeline.report.recognizedColumns, "actors(type=Player)", "friendly casts", "tank mitigation actionId"],
+      skippedRows: [
+        ...timeline.report.skippedRows,
+        ...(tankInfo ? [] : [{ row: 0, reason: "没有识别到两名坦克，已只导入时间轴。" }]),
+        ...(importedAssignments.length ? [] : [{ row: 0, reason: "没有从当前战斗识别到坦克减伤释放记录。" }]),
+      ],
+    },
+  };
+}
+
+export async function importFFLogsReportUrlWithTankMitigations(url: string): Promise<FFLogsTankMitigationImport> {
+  const payload = await fetchFFLogsPayload(url);
+  const timeline = timelineFromHealerbookPayload(payload) ?? parseFFLogsJson(payload);
+  return parseFFLogsTankMitigations(payload, timeline);
 }

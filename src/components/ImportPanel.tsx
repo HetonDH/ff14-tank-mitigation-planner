@@ -18,10 +18,11 @@ interface Props {
   onLogTextChange: (text: string) => void;
   onLogEncounterChange: (id: string) => void;
   onImportFFLogsUrl: () => void;
+  onImportFFLogsTanks: () => void;
   onReadLog: () => void;
 }
 
-export function ImportPanel({ language, fflogsUrl, logFile, logText, logEncounterId, isReadingLog, report, events, onFFLogsUrlChange, onLogFileChange, onLogTextChange, onLogEncounterChange, onImportFFLogsUrl, onReadLog }: Props) {
+export function ImportPanel({ language, fflogsUrl, logFile, logText, logEncounterId, isReadingLog, report, events, onFFLogsUrlChange, onLogFileChange, onLogTextChange, onLogEncounterChange, onImportFFLogsUrl, onImportFFLogsTanks, onReadLog }: Props) {
   const zh = language === "zh";
   const { eventTypeLabels, severityLabels, timelineTargetLabels } = labelsFor(language);
   return (
@@ -35,11 +36,16 @@ export function ImportPanel({ language, fflogsUrl, logFile, logText, logEncounte
           onChange={(event) => onFFLogsUrlChange(event.target.value)}
           placeholder="https://www.fflogs.com/reports/ABC123#fight=5"
         />
-        <button className="btn mt-2 w-full" onClick={onImportFFLogsUrl} disabled={isReadingLog || !fflogsUrl.trim()}>
-          <Upload size={16} />{isReadingLog ? (zh ? "正在导入 FFLogs..." : "Importing FFLogs...") : (zh ? "按报告链接导入" : "Import report URL")}
-        </button>
+        <div className="mt-2 grid grid-cols-1 gap-2">
+          <button className="btn w-full" onClick={onImportFFLogsUrl} disabled={isReadingLog || !fflogsUrl.trim()}>
+            <Upload size={16} />{isReadingLog ? (zh ? "正在导入 FFLogs..." : "Importing FFLogs...") : (zh ? "单独导入时间轴" : "Import timeline only")}
+          </button>
+          <button className="btn btn-primary w-full" onClick={onImportFFLogsTanks} disabled={isReadingLog || !fflogsUrl.trim()}>
+            <Upload size={16} />{isReadingLog ? (zh ? "正在导入 FFLogs..." : "Importing FFLogs...") : (zh ? "导入双 T 信息与减伤" : "Import tanks and mitigation")}
+          </button>
+        </div>
         <div className="mt-2 text-xs text-slate-400">
-          {zh ? "优先使用这个入口：粘贴 FFLogs 报告链接后，会读取标准伤害事件并生成时间轴。" : "Use this first: paste a FFLogs report URL to import standard damage events."}
+          {zh ? "第一个按钮只生成 boss 伤害时间轴；第二个按钮会额外识别当前战斗的 MT/ST 职业和坦克减伤释放记录。" : "The first button imports boss damage only; the second also imports current MT/ST jobs and tank mitigation casts."}
         </div>
         <div className="mt-4 border-t border-cyan-500/10 pt-3 text-sm font-semibold text-cyan-100">{zh ? "日志文件 / JSON 兜底" : "Log file / JSON fallback"}</div>
         <input className="field w-full" type="file" accept=".json,.txt,.log" onChange={(event) => onLogFileChange(event.target.files?.[0] ?? null)} />

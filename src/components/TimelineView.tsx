@@ -169,7 +169,7 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
               return (
             <button
               key={assignment.id}
-              className={`absolute rounded-md border px-2 py-1 text-left text-[11px] ${hasConflict ? "border-red-400 bg-red-500/30 text-red-50" : assignment.source === "auto" ? "border-cyan-400/50 bg-cyan-500/15 text-cyan-50" : "border-emerald-400/50 bg-emerald-500/15 text-emerald-50"}`}
+              className={`absolute rounded-md border px-2 py-1 text-left text-[11px] ${hasConflict ? "border-red-400 bg-red-500/30 text-red-50" : assignment.source === "auto" ? "border-cyan-400/50 bg-cyan-500/15 text-cyan-50" : assignment.source === "log" ? "border-violet-400/50 bg-violet-500/15 text-violet-50" : "border-emerald-400/50 bg-emerald-500/15 text-emerald-50"}`}
               style={{ left, top, width: assignmentWidth, height: assignmentHeight }}
               onDoubleClick={() => assignment.source === "manual" && onDeleteManual(assignment.id)}
               draggable={assignment.source === "manual"}

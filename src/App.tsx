@@ -14,7 +14,7 @@ import { planMitigations } from "./algorithms/mitigationPlanner";
 import type { AssignmentTarget, MitigationAssignment, PlannerSettings, PlannerWarning, PlayerRole, TankJob } from "./types/mitigation";
 import type { ParseReport, TimelineEvent } from "./types/timeline";
 import { parseFFLogsFile, parseFFLogsText } from "./utils/parseFFLogs";
-import { importFFLogsReportUrl } from "./utils/fflogsReport";
+import { importFFLogsReportUrl, importFFLogsReportUrlWithTankMitigations } from "./utils/fflogsReport";
 import { downloadJson, readJsonFile } from "./utils/exportImport";
 import type { UiLanguage } from "./types/ui";
 
@@ -98,6 +98,48 @@ function App() {
         eventCount: 0,
         sheetName: "FFLogs",
         recognizedColumns: ["reportCode", "fightId"],
+        skippedRows: [{ row: 0, reason: message }],
+      });
+    } finally {
+      setIsReadingLog(false);
+    }
+  }
+
+  async function importFFLogsUrlTanksAndMitigations() {
+    setIsReadingLog(true);
+    try {
+      const parsed = await importFFLogsReportUrlWithTankMitigations(fflogsUrl);
+      setEvents(parsed.events);
+      setReport(parsed.report);
+      setLogEncounterId("");
+      setAutoAssignments([]);
+      setManualAssignments(parsed.assignments);
+      if (parsed.tankInfo) {
+        setMainTankJob(parsed.tankInfo.mtJob);
+        setOffTankJob(parsed.tankInfo.stJob);
+        setPlayerRole("MT");
+        setWarnings([{
+          id: `info-fflogs-tanks-${Date.now()}`,
+          level: "info",
+          message: language === "zh"
+            ? `已识别 MT：${parsed.tankInfo.mtName}（${jobNames[parsed.tankInfo.mtJob]}），ST：${parsed.tankInfo.stName}（${jobNames[parsed.tankInfo.stJob]}），并导入 ${parsed.assignments.length} 条坦克减伤。`
+            : `Detected MT: ${parsed.tankInfo.mtName} (${jobNamesEn[parsed.tankInfo.mtJob]}), ST: ${parsed.tankInfo.stName} (${jobNamesEn[parsed.tankInfo.stJob]}), and imported ${parsed.assignments.length} tank mitigations.`,
+        }]);
+      } else {
+        setWarnings([{
+          id: `warn-fflogs-tanks-${Date.now()}`,
+          level: "warning",
+          message: language === "zh" ? "已导入时间轴，但没有识别到完整双 T 信息。" : "Timeline imported, but complete two-tank information was not detected.",
+        }]);
+      }
+      setSelectedEvent(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : language === "zh" ? "FFLogs 导入失败。" : "FFLogs import failed.";
+      setReport({
+        fileName: "FFLogs 报告链接",
+        eventCount: 0,
+        sheetName: "FFLogs",
+        recognizedColumns: ["reportCode", "fightId", "actors", "casts"],
         skippedRows: [{ row: 0, reason: message }],
       });
     } finally {
@@ -199,7 +241,7 @@ function App() {
     const data = await readJsonFile(fileToImport);
     setEvents(data.events);
     setAutoAssignments(data.assignments.filter((item) => item.source === "auto"));
-    setManualAssignments(data.assignments.filter((item) => item.source === "manual"));
+    setManualAssignments(data.assignments.filter((item) => item.source !== "auto"));
     setPlayerRole(data.selectedJobs.playerRole);
     setMainTankJob(data.selectedJobs.mainTankJob);
     setOffTankJob(data.selectedJobs.offTankJob);
@@ -252,7 +294,7 @@ function App() {
           onSettingsChange={(next) => { setSettings(next); setAutoAssignments([]); }}
         />
       }
-      left={<ImportPanel language={language} fflogsUrl={fflogsUrl} logFile={logFile} logText={logText} logEncounterId={logEncounterId} isReadingLog={isReadingLog} report={report} events={events} onFFLogsUrlChange={setFflogsUrl} onLogFileChange={(nextFile) => { setLogFile(nextFile); setLogEncounterId(""); }} onLogTextChange={(text) => { setLogText(text); setLogEncounterId(""); }} onLogEncounterChange={selectLogEncounter} onImportFFLogsUrl={importFFLogsUrlTimeline} onReadLog={() => readLogTimeline()} />}
+      left={<ImportPanel language={language} fflogsUrl={fflogsUrl} logFile={logFile} logText={logText} logEncounterId={logEncounterId} isReadingLog={isReadingLog} report={report} events={events} onFFLogsUrlChange={setFflogsUrl} onLogFileChange={(nextFile) => { setLogFile(nextFile); setLogEncounterId(""); }} onLogTextChange={(text) => { setLogText(text); setLogEncounterId(""); }} onLogEncounterChange={selectLogEncounter} onImportFFLogsUrl={importFFLogsUrlTimeline} onImportFFLogsTanks={importFFLogsUrlTanksAndMitigations} onReadLog={() => readLogTimeline()} />}
       center={
         <div className="space-y-3">
           <TimelineView language={language} events={events} assignments={assignments} maxTime={maxTime} onSelectEvent={setSelectedEvent} onDropSkill={addManualSkill} onMoveAssignment={moveManualAssignment} onDeleteManual={(id) => setManualAssignments((current) => current.filter((item) => item.id !== id))} skills={skills} />

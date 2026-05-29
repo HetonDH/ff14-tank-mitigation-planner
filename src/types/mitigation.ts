@@ -4,7 +4,7 @@ export type PlayerRole = "MT" | "ST";
 export type SkillCategory = "personal" | "party" | "target" | "invuln" | "utility";
 export type DamageType = "all" | "physical" | "magical";
 export type SkillTargeting = "self" | "partner" | "party" | "bothTanks" | "selected";
-export type AssignmentSource = "auto" | "manual";
+export type AssignmentSource = "auto" | "manual" | "log";
 export type AssignmentTarget = "self" | "partner" | "MT" | "ST" | "party" | "bothTanks";
 
 export interface MitigationSkill {

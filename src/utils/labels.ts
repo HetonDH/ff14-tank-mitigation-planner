@@ -99,11 +99,13 @@ export const severityLabelsEn: Record<TimelineEvent["severity"], string> = {
 export const sourceLabelsZh: Record<AssignmentSource, string> = {
   auto: "自动",
   manual: "手动",
+  log: "日志",
 };
 
 export const sourceLabelsEn: Record<AssignmentSource, string> = {
   auto: "Auto",
   manual: "Manual",
+  log: "Log",
 };
 
 export function labelsFor(language: UiLanguage) {
