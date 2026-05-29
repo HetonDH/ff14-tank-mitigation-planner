@@ -95,11 +95,7 @@ export async function importFFLogsReportUrl(url: string): Promise<{ events: Time
   const parsed = parseFFLogsUrl(url);
   if (!parsed.reportCode) throw new Error("无法识别 FFLogs 链接，请使用 reports 链接或报告代码。");
 
-  const proxyBase = (import.meta.env.VITE_FFLOGS_PROXY_BASE ?? "").replace(/\/+$/, "");
-  if (!proxyBase) {
-    throw new Error("当前是纯前端版本，不能安全直连 FFLogs API。请先使用本地日志/FFLogs JSON，或配置 VITE_FFLOGS_PROXY_BASE 接入 Worker 代理。");
-  }
-
+  const proxyBase = (import.meta.env.VITE_FFLOGS_PROXY_BASE ?? "/api").replace(/\/+$/, "");
   const params = new URLSearchParams({ reportCode: parsed.reportCode });
   if (!parsed.isLastFight && parsed.fightId !== null) params.set("fightId", String(parsed.fightId));
   const response = await fetch(`${proxyBase}/fflogs/import?${params.toString()}`);

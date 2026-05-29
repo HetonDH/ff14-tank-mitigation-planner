@@ -44,9 +44,33 @@ npm run build
 
 构建产物在 `dist/`，可部署到 Vercel / Netlify / GitHub Pages。
 
+## Vercel FFLogs 导入
+
+本项目已内置 Vercel Serverless API：`/api/fflogs/import`。
+
+在 Vercel 项目里添加环境变量：
+
+```text
+FFLOGS_CLIENT_ID=你的 FFLogs Client ID
+FFLOGS_CLIENT_SECRET=你的 FFLogs Client Secret
+FFLOGS_REGION=cn
+```
+
+部署后，在页面左侧粘贴类似下面的链接即可导入：
+
+```text
+https://www.fflogs.com/reports/ABC123#fight=5
+```
+
+如果前端和代理分开部署，再额外设置：
+
+```text
+VITE_FFLOGS_PROXY_BASE=https://你的代理域名/api
+```
+
 ## 说明
 
 当前算法是本地规则算法，不接后端，也不接 OpenAI API。  
-FFLogs API 直连需要 OAuth 密钥和代理服务。纯前端不能安全保存密钥，所以报告链接入口需要配置 `VITE_FFLOGS_PROXY_BASE` 指向 Worker/后端代理；未配置时可以先上传或粘贴 FFLogs 事件 JSON。本地 `.log/.txt` 为实验解析，需要用真实样本继续校对。
+FFLogs API 直连需要 OAuth 密钥，所以报告链接导入通过 Vercel `/api` 代理完成；本地 `.log/.txt` 仍是实验解析，需要用真实样本继续校对。
 它会检查技能等级、CD、覆盖时间、目标和伤害属性，但仍需要玩家根据副本机制自行校对。
 硬减是乘算，多个百分比减伤叠加会有收益递减；工具会降低重复硬减的优先级，但高危死刑仍可能保守叠减并给出提示。
