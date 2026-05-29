@@ -9,9 +9,11 @@ export type AssignmentTarget = "self" | "partner" | "MT" | "ST" | "party" | "bot
 
 export interface MitigationSkill {
   id: string;
+  actionId?: number;
   job: SkillJob;
   zhName: string;
   enName: string;
+  icon?: string;
   category: SkillCategory;
   cooldown: number;
   duration: number;
@@ -22,6 +24,8 @@ export interface MitigationSkill {
   isInvuln: boolean;
   minLevel: number;
   maxLevel?: number;
+  statusIds?: number[];
+  trackGroup?: number;
   notes?: string;
 }
 
