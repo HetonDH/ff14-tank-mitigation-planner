@@ -15,7 +15,7 @@
 - 支持中文 / English 界面切换
 - 支持导入 / 导出 JSON
 - 排轴规则参考常见高难减伤轴思路：死刑优先组合不同类别减伤，避免同类硬减过度重叠；平 A 优先短 CD 小减；AOE 优先团减和雪仇；技能会尽量提前开启
-- FFLogs 标准导入参考 healerbook 的思路：报告链接解析为 `reportCode + fightId`，再交给代理读取 FFLogs 标准事件流
+- FFLogs 标准导入：报告链接解析为 `reportCode + fightId`，再交给代理读取标准事件流
 
 ## 本地运行
 

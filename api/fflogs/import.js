@@ -175,6 +175,7 @@ async function getEventsForSpec(reportCode, start, end, region, spec) {
 async function getReportEvents(reportCode, start, end, region) {
   const specs = [
     { dataType: "DamageTaken", includeResources: true },
+    { dataType: "CombatantInfo", includeResources: true },
     { dataType: "Casts" },
     { dataType: "Casts", hostilityType: "Enemies" },
     { dataType: "Buffs" },

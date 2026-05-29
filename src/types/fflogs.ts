@@ -4,6 +4,7 @@ export interface FFLogsActor {
   type?: string;
   subType?: string;
   server?: string;
+  level?: number;
 }
 
 export interface FFLogsAbility {
@@ -28,6 +29,12 @@ export interface FFLogsEvent {
   overkill?: number;
   tick?: boolean;
   targetResources?: {
+    hitPoints?: number;
+    maxHitPoints?: number;
+  };
+  level?: number;
+  maxHitPoints?: number;
+  sourceResources?: {
     hitPoints?: number;
     maxHitPoints?: number;
   };

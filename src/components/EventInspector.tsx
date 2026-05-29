@@ -15,7 +15,7 @@ interface Props {
 export function EventInspector({ language, event, assignments, onUpdateEvent }: Props) {
   const zh = language === "zh";
   const { damageTypeLabels, eventTypeLabels, timelineTargetLabels } = labelsFor(language);
-  const eventTypes: TimelineEventType[] = ["mechanic", "auto", "singleTankbuster", "sharedTankbuster", "spreadTankbuster", "aoe"];
+  const eventTypes: TimelineEventType[] = ["mechanic", "auto", "singleTankbuster", "sharedTankbuster", "spreadTankbuster", "singleDamage", "roleMechanic", "aoe"];
   const damageTypes: DamageType[] = ["all", "physical", "magical"];
   const updateType = (nextType: TimelineEventType) => {
     if (!event) return;
@@ -37,6 +37,15 @@ export function EventInspector({ language, event, assignments, onUpdateEvent }: 
           <div className="text-lg font-semibold text-slate-100">{event.name}</div>
           <div>{zh ? "时间" : "Time"}：{formatTime(event.time)}</div>
           <div>{zh ? "目标" : "Target"}：{timelineTargetLabels[event.target]}</div>
+          {event.targetDamageLabel ? <div>{event.targetDamageLabel}</div> : null}
+          <label className="block text-xs text-slate-400">
+            {zh ? "技能名" : "Name"}
+            <input className="field mt-1 w-full" value={event.name} onChange={(changeEvent) => onUpdateEvent({ ...event, name: changeEvent.target.value })} />
+          </label>
+          <label className="block text-xs text-slate-400">
+            {zh ? "时间（秒）" : "Time (s)"}
+            <input className="field mt-1 w-full" type="number" step={0.1} value={event.time} onChange={(changeEvent) => onUpdateEvent({ ...event, time: Number(changeEvent.target.value) })} />
+          </label>
           <label className="block text-xs text-slate-400">
             {zh ? "类型" : "Type"}
             <select
@@ -61,7 +70,10 @@ export function EventInspector({ language, event, assignments, onUpdateEvent }: 
               ))}
             </select>
           </label>
-          {event.damage ? <div>{zh ? "伤害" : "Damage"}：{Math.round(event.damage).toLocaleString()}</div> : null}
+          <label className="block text-xs text-slate-400">
+            {zh ? "伤害" : "Damage"}
+            <input className="field mt-1 w-full" type="number" value={event.damage ?? 0} onChange={(changeEvent) => onUpdateEvent({ ...event, damage: Number(changeEvent.target.value) || undefined })} />
+          </label>
           <div>{zh ? "持续" : "Duration"}：{event.duration ?? 0}s</div>
           <div>{zh ? "备注" : "Notes"}：{event.notes ?? (zh ? "无" : "None")}</div>
           <div className="pt-2 text-xs text-slate-400">{zh ? "覆盖减伤" : "Covering mitigations"}：{assignments.filter((item) => item.eventIds.includes(event.id)).map((item) => zh ? item.skillName : findSkill(item.skillId)?.enName ?? item.skillName).join(zh ? "，" : ", ") || (zh ? "暂无" : "None")}</div>

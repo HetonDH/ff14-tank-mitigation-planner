@@ -20,6 +20,8 @@ export const eventTypeLabelsZh: Record<TimelineEventType, string> = {
   singleTankbuster: "单体死刑",
   sharedTankbuster: "双 T 分摊死刑",
   spreadTankbuster: "双 T 分散死刑",
+  singleDamage: "单体大伤害",
+  roleMechanic: "职能机制",
   aoe: "AOE",
 };
 
@@ -29,6 +31,8 @@ export const eventTypeLabelsEn: Record<TimelineEventType, string> = {
   singleTankbuster: "Single buster",
   sharedTankbuster: "Shared tank buster",
   spreadTankbuster: "Split tank buster",
+  singleDamage: "Single-target damage",
+  roleMechanic: "Role mechanic",
   aoe: "AOE",
 };
 

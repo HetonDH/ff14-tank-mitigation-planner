@@ -13,6 +13,7 @@ interface Props {
   isReadingLog: boolean;
   report: ParseReport | null;
   events: TimelineEvent[];
+  onSelectEvent: (event: TimelineEvent) => void;
   onFFLogsUrlChange: (url: string) => void;
   onLogFileChange: (file: File | null) => void;
   onLogTextChange: (text: string) => void;
@@ -22,7 +23,7 @@ interface Props {
   onReadLog: () => void;
 }
 
-export function ImportPanel({ language, fflogsUrl, logFile, logText, logEncounterId, isReadingLog, report, events, onFFLogsUrlChange, onLogFileChange, onLogTextChange, onLogEncounterChange, onImportFFLogsUrl, onImportFFLogsTanks, onReadLog }: Props) {
+export function ImportPanel({ language, fflogsUrl, logFile, logText, logEncounterId, isReadingLog, report, events, onSelectEvent, onFFLogsUrlChange, onLogFileChange, onLogTextChange, onLogEncounterChange, onImportFFLogsUrl, onImportFFLogsTanks, onReadLog }: Props) {
   const zh = language === "zh";
   const { eventTypeLabels, severityLabels, timelineTargetLabels } = labelsFor(language);
   return (
@@ -85,11 +86,12 @@ export function ImportPanel({ language, fflogsUrl, logFile, logText, logEncounte
         <h3 className="mb-2 text-sm font-semibold text-slate-300">{zh ? "事件列表" : "Events"}</h3>
         <div className="space-y-2">
           {events.map((event) => (
-            <div key={event.id} className="rounded-md border border-slate-800 bg-slate-950 p-2 text-xs">
+            <button key={event.id} className="w-full rounded-md border border-slate-800 bg-slate-950 p-2 text-left text-xs transition hover:border-cyan-400" onClick={() => onSelectEvent(event)}>
               <div className="flex justify-between text-slate-100"><span>{event.name}</span><span>{formatTime(event.time)}</span></div>
               <div className="mt-1 text-slate-400">{timelineTargetLabels[event.target]} · {eventTypeLabels[event.type]} · {severityLabels[event.severity]}</div>
+              {event.targetDamageLabel ? <div className="text-slate-500">{event.targetDamageLabel}</div> : null}
               <div className="text-slate-500">{zh ? "伤害" : "Damage"}：{event.damage ? Math.round(event.damage).toLocaleString() : zh ? "未填写" : "Empty"}</div>
-            </div>
+            </button>
           ))}
           {!events.length && <div className="text-sm text-slate-500">{zh ? "尚未读取事件。" : "No events loaded."}</div>}
         </div>

@@ -99,6 +99,7 @@ function classifyEvent(targets: FFLogsActor[], tankIds: Set<number>, abilityName
   if (uniqueCount >= 5) return { type: "aoe", target: "party", severity: damage >= 90000 ? "high" : "medium" };
   if (tankHitCount >= 2 && uniqueCount <= 2) return { type: "spreadTankbuster", target: "bothTanks", severity: damage >= 140000 ? "lethal" : "high" };
   if (tankHitCount === 1 && uniqueCount === 1) return { type: "singleTankbuster", target: "MT", severity: damage >= 140000 ? "lethal" : "high" };
+  if (tankHitCount === 0 && uniqueCount === 1) return { type: damage >= 90000 ? "singleDamage" : "roleMechanic", target: "self", severity: damage >= 90000 ? "high" : "medium" };
   return { type: "aoe", target: uniqueCount >= 2 ? "party" : "self", severity: damage >= 90000 ? "high" : "medium" };
 }
 
@@ -331,6 +332,7 @@ export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; repor
       time: relativeTime,
       name: base.abilityName,
       damage: maxDamage || undefined,
+      targetDamageLabel: targets.length ? `对 ${targets.map((target) => target.name).join("、")} 的伤害` : undefined,
       type: classification.type,
       damageType: damageTypeFromAbility(ability),
       target: classification.target,
@@ -338,6 +340,7 @@ export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; repor
       source: "fflogs",
       sourceId: String(base.abilityId || ""),
       notes: `FFLogs ability=${base.abilityId || "unknown"}，命中 ${targets.length} 人：${targets.map((target) => target.name).join("、")}`,
+      targetNames: targets.map((target) => target.name),
       targetSignature,
       sourceSignature,
       targetCount: new Set(targets.map((target) => target.id)).size,
@@ -633,6 +636,7 @@ function buildAutoAttackEvents(autoHits: LocalLogHit[], start: number): Timeline
         time: Math.round((first.timestamp - start) / 10) / 100,
         name: "平 A",
         damage: averageDamage || maxDamage || undefined,
+        targetDamageLabel: `对 ${[...uniqueTargets].join("、")} 的伤害`,
         type: "auto",
         damageType: "all",
         target: uniqueTargets.size >= 2 ? "bothTanks" : "MT",
@@ -642,6 +646,7 @@ function buildAutoAttackEvents(autoHits: LocalLogHit[], start: number): Timeline
         sourceId: first.abilityId,
         sourceRow: first.row,
         notes: `平 A 窗口：来源 ${first.sourceName}，${group.length} 次，平均 ${averageDamage.toLocaleString()}，最高 ${maxDamage.toLocaleString()}，目标 ${[...uniqueTargets].join("、")}`,
+        targetNames: [...uniqueTargets],
       });
       group = [];
     }
@@ -718,6 +723,7 @@ function eventsFromLocalHits(rawHits: LocalLogHit[], start: number): TimelineEve
       time: Math.round((base.timestamp - start) / 10) / 100,
       name: base.abilityName,
       damage: maxDamage || undefined,
+      targetDamageLabel: `对 ${[...uniqueTargets].join("、")} 的伤害`,
       type,
       damageType: "all",
       target: type === "aoe" ? "party" : type === "spreadTankbuster" ? "bothTanks" : "MT",
@@ -726,6 +732,7 @@ function eventsFromLocalHits(rawHits: LocalLogHit[], start: number): TimelineEve
       sourceId: base.abilityId,
       sourceRow: base.row,
       notes: `本地日志实验解析，来源 ${base.sourceName}，命中 ${uniqueTargets.size} 个玩家：${[...uniqueTargets].join("、")}`,
+      targetNames: [...uniqueTargets],
     });
   }
   return events.sort((a, b) => a.time - b.time);

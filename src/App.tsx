@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { BookOpen, Download, Eraser, Sparkles, Upload } from "lucide-react";
+import { BookOpen, Download, Eraser, Lock, Sparkles, Unlock, Upload } from "lucide-react";
 import { AppShell } from "./components/AppShell";
 import { EventInspector } from "./components/EventInspector";
 import { ImportPanel } from "./components/ImportPanel";
@@ -21,7 +21,7 @@ import type { UiLanguage } from "./types/ui";
 const initialSettings: PlannerSettings = {
   allowInvuln: true,
   includeAutoAttacks: true,
-  avoidBurstWindows: true,
+  avoidBurstWindows: false,
   preferInvulnCheese: false,
   burstWindows: [60, 120, 180, 240],
   burstWindowRadius: 8,
@@ -53,6 +53,8 @@ function App() {
   const [settings, setSettings] = useState<PlannerSettings>(initialSettings);
   const [language, setLanguage] = useState<UiLanguage>("zh");
   const [showTutorial, setShowTutorial] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
+  const [timelineViewMode, setTimelineViewMode] = useState<"all" | "tanks">("all");
   const importJsonRef = useRef<HTMLInputElement>(null);
 
   const manualJob = playerRole === "MT" ? mainTankJob : offTankJob;
@@ -117,6 +119,14 @@ function App() {
       if (parsed.tankInfo) {
         setMainTankJob(parsed.tankInfo.mtJob);
         setOffTankJob(parsed.tankInfo.stJob);
+        if (parsed.tankInfo.mtLevel) setMtLevel(parsed.tankInfo.mtLevel);
+        if (parsed.tankInfo.stLevel) setStLevel(parsed.tankInfo.stLevel);
+        if (parsed.tankInfo.mtHp) setMtHp(parsed.tankInfo.mtHp);
+        if (parsed.tankInfo.stHp) setStHp(parsed.tankInfo.stHp);
+        if (parsed.tankInfo.mtLevel || parsed.tankInfo.stLevel) {
+          const importedDutyLevel = parsed.tankInfo.mtLevel ?? parsed.tankInfo.stLevel ?? settings.dutyLevel;
+          setSettings((current) => ({ ...current, dutyLevel: importedDutyLevel }));
+        }
         setPlayerRole("MT");
         setWarnings([{
           id: `info-fflogs-tanks-${Date.now()}`,
@@ -170,6 +180,7 @@ function App() {
   }
 
   function addManualSkill(skillId: string, start: number) {
+    if (isLocked) return;
     const skill = findSkill(skillId);
     if (!skill) return;
     const target = skill.canTargetPartner
@@ -201,6 +212,7 @@ function App() {
   }
 
   function moveManualAssignment(assignmentId: string, start: number) {
+    if (isLocked) return;
     setManualAssignments((current) =>
       current.map((assignment) => {
         if (assignment.id !== assignmentId) return assignment;
@@ -220,8 +232,18 @@ function App() {
   }
 
   function updateEvent(nextEvent: TimelineEvent) {
+    if (isLocked) return;
     setEvents((current) => current.map((event) => (event.id === nextEvent.id ? nextEvent : event)));
     setSelectedEvent(nextEvent);
+    setAutoAssignments([]);
+  }
+
+  function updateSettings(next: PlannerSettings) {
+    setSettings(next);
+    if (syncLevels && next.dutyLevel !== settings.dutyLevel) {
+      setMtLevel(next.dutyLevel);
+      setStLevel(next.dutyLevel);
+    }
     setAutoAssignments([]);
   }
 
@@ -263,7 +285,8 @@ function App() {
         <>
           <button className="btn" onClick={() => setShowTutorial(true)}><BookOpen size={16} />{language === "zh" ? "新手教程" : "Guide"}</button>
           <button className="btn" onClick={() => setLanguage((current) => current === "zh" ? "en" : "zh")}>{language === "zh" ? "English" : "中文"}</button>
-          <button className="btn btn-primary" onClick={generatePlan} disabled={!events.length}><Sparkles size={16} />{language === "zh" ? "一键生成最佳减伤" : "Generate best plan"}</button>
+          <button className="btn" onClick={() => setIsLocked((current) => !current)}>{isLocked ? <Lock size={16} /> : <Unlock size={16} />}{isLocked ? (language === "zh" ? "已锁定" : "Locked") : (language === "zh" ? "未锁定" : "Unlocked")}</button>
+          <button className="btn btn-primary" onClick={generatePlan} disabled={!events.length || isLocked}><Sparkles size={16} />{language === "zh" ? "一键生成最佳减伤" : "Generate best plan"}</button>
           <button className="btn" onClick={() => setAutoAssignments([])}><Eraser size={16} />{language === "zh" ? "清空自动排轴" : "Clear auto plan"}</button>
           <button className="btn" onClick={() => setManualAssignments([])}><Eraser size={16} />{language === "zh" ? "清空手动排轴" : "Clear manual plan"}</button>
           <button className="btn" onClick={exportJson}><Download size={16} />{language === "zh" ? "导出 JSON" : "Export JSON"}</button>
@@ -286,18 +309,18 @@ function App() {
           onRoleChange={setPlayerRole}
           onMtJobChange={(job) => { setMainTankJob(job); setAutoAssignments([]); }}
           onStJobChange={(job) => { setOffTankJob(job); setAutoAssignments([]); }}
-          onMtLevelChange={(level) => { setMtLevel(level); if (syncLevels) setStLevel(level); setSettings((current) => ({ ...current, dutyLevel: level })); setAutoAssignments([]); }}
+          onMtLevelChange={(level) => { setMtLevel(level); if (syncLevels) setSettings((current) => ({ ...current, dutyLevel: level })); setAutoAssignments([]); }}
           onStLevelChange={(level) => { setStLevel(level); setAutoAssignments([]); }}
           onMtHpChange={(hp) => { setMtHp(hp); setAutoAssignments([]); }}
           onStHpChange={(hp) => { setStHp(hp); setAutoAssignments([]); }}
-          onSyncLevelsChange={(sync) => { setSyncLevels(sync); if (sync) setStLevel(mtLevel); setAutoAssignments([]); }}
-          onSettingsChange={(next) => { setSettings(next); setAutoAssignments([]); }}
+          onSyncLevelsChange={(sync) => { setSyncLevels(sync); if (sync) { setMtLevel(settings.dutyLevel); setStLevel(settings.dutyLevel); } setAutoAssignments([]); }}
+          onSettingsChange={updateSettings}
         />
       }
-      left={<ImportPanel language={language} fflogsUrl={fflogsUrl} logFile={logFile} logText={logText} logEncounterId={logEncounterId} isReadingLog={isReadingLog} report={report} events={events} onFFLogsUrlChange={setFflogsUrl} onLogFileChange={(nextFile) => { setLogFile(nextFile); setLogEncounterId(""); }} onLogTextChange={(text) => { setLogText(text); setLogEncounterId(""); }} onLogEncounterChange={selectLogEncounter} onImportFFLogsUrl={importFFLogsUrlTimeline} onImportFFLogsTanks={importFFLogsUrlTanksAndMitigations} onReadLog={() => readLogTimeline()} />}
+      left={<ImportPanel language={language} fflogsUrl={fflogsUrl} logFile={logFile} logText={logText} logEncounterId={logEncounterId} isReadingLog={isReadingLog} report={report} events={events} onSelectEvent={setSelectedEvent} onFFLogsUrlChange={setFflogsUrl} onLogFileChange={(nextFile) => { setLogFile(nextFile); setLogEncounterId(""); }} onLogTextChange={(text) => { setLogText(text); setLogEncounterId(""); }} onLogEncounterChange={selectLogEncounter} onImportFFLogsUrl={importFFLogsUrlTimeline} onImportFFLogsTanks={importFFLogsUrlTanksAndMitigations} onReadLog={() => readLogTimeline()} />}
       center={
         <div className="space-y-3">
-          <TimelineView language={language} events={events} assignments={assignments} maxTime={maxTime} onSelectEvent={setSelectedEvent} onDropSkill={addManualSkill} onMoveAssignment={moveManualAssignment} onDeleteManual={(id) => setManualAssignments((current) => current.filter((item) => item.id !== id))} skills={skills} />
+          <TimelineView language={language} events={events} assignments={assignments} maxTime={maxTime} isLocked={isLocked} viewMode={timelineViewMode} onViewModeChange={setTimelineViewMode} activeRole={playerRole} onSelectEvent={setSelectedEvent} onDropSkill={addManualSkill} onMoveAssignment={moveManualAssignment} onDeleteEvent={(id) => { if (!isLocked) setEvents((current) => current.filter((event) => event.id !== id)); }} onDeleteManual={(id) => { if (!isLocked) setManualAssignments((current) => current.filter((item) => item.id !== id)); }} skills={skills} />
           <div className="grid grid-cols-2 gap-3">
             <MitigationTable language={language} assignments={assignments} />
             <WarningPanel language={language} warnings={warnings} />

@@ -15,6 +15,10 @@ export interface ImportedTankInfo {
   stJob: TankJob;
   mtName: string;
   stName: string;
+  mtLevel?: number;
+  stLevel?: number;
+  mtHp?: number;
+  stHp?: number;
 }
 
 export interface FFLogsTankMitigationImport {
@@ -78,33 +82,33 @@ export function parseFFLogsUrl(input: string): ParsedFFLogsUrl {
   return { reportCode, fightId, isLastFight, region };
 }
 
-function mapHealerbookType(type: string | undefined): TimelineEventType {
+function mapImportedTimelineType(type: string | undefined): TimelineEventType {
   if (type === "auto") return "auto";
   if (type === "tankbuster") return "singleTankbuster";
   if (type === "partial_aoe" || type === "partial_final_aoe" || type === "aoe") return "aoe";
   return "aoe";
 }
 
-function mapHealerbookTarget(event: Record<string, unknown>, type: TimelineEventType): TimelineTarget {
+function mapImportedTimelineTarget(event: Record<string, unknown>, type: TimelineEventType): TimelineTarget {
   const details = Array.isArray(event.playerDamageDetails) ? event.playerDamageDetails : [];
   if (type === "aoe") return "party";
   if (details.length >= 2) return "bothTanks";
   return "MT";
 }
 
-function mapHealerbookDamageType(value: unknown): DamageType {
+function mapImportedTimelineDamageType(value: unknown): DamageType {
   if (value === "physical" || value === "magical" || value === "all") return value;
   return "all";
 }
 
-function timelineFromHealerbookPayload(payload: unknown): { events: TimelineEvent[]; report: ParseReport } | null {
+function timelineFromImportedPayload(payload: unknown): { events: TimelineEvent[]; report: ParseReport } | null {
   const root = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
   const damageEvents = Array.isArray(root.damageEvents) ? root.damageEvents : null;
   if (!damageEvents) return null;
 
   const events: TimelineEvent[] = damageEvents.map((raw, index): TimelineEvent => {
     const event = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
-    const type = mapHealerbookType(String(event.type ?? ""));
+    const type = mapImportedTimelineType(String(event.type ?? ""));
     const time = Number(event.time ?? event.timestamp ?? 0);
     const damage = Number(event.damage ?? 0);
     const severity: TimelineEvent["severity"] = type === "auto" ? "medium" : type === "aoe" ? "medium" : "high";
@@ -113,9 +117,10 @@ function timelineFromHealerbookPayload(payload: unknown): { events: TimelineEven
       time: Number.isFinite(time) ? time : 0,
       name: String(event.name ?? event.actionName ?? "未知技能"),
       damage: damage > 0 ? damage : undefined,
+      targetDamageLabel: mapImportedTimelineTarget(event, type) === "party" ? "对全体的伤害" : undefined,
       type,
-      damageType: mapHealerbookDamageType(event.damageType),
-      target: mapHealerbookTarget(event, type),
+      damageType: mapImportedTimelineDamageType(event.damageType),
+      target: mapImportedTimelineTarget(event, type),
       severity,
       source: "fflogs",
       sourceId: String(event.abilityId ?? event.actionId ?? event.packetId ?? ""),
@@ -150,7 +155,7 @@ async function fetchFFLogsPayload(url: string): Promise<unknown> {
 
 export async function importFFLogsReportUrl(url: string): Promise<{ events: TimelineEvent[]; report: ParseReport }> {
   const payload = await fetchFFLogsPayload(url);
-  return timelineFromHealerbookPayload(payload) ?? parseFFLogsJson(payload);
+  return timelineFromImportedPayload(payload) ?? parseFFLogsJson(payload);
 }
 
 function abilityIdOf(event: Record<string, unknown>) {
@@ -160,6 +165,26 @@ function abilityIdOf(event: Record<string, unknown>) {
 
 function eventDamage(event: Record<string, unknown>) {
   return Number(event.unmitigatedAmount ?? event.amount ?? 0) || 0;
+}
+
+function actorMaxHpFromEvents(events: Record<string, unknown>[], actorId: number) {
+  let maxHp = 0;
+  for (const event of events) {
+    const targetResources = toRecord(event.targetResources);
+    const sourceResources = toRecord(event.sourceResources);
+    if (Number(event.targetID) === actorId) maxHp = Math.max(maxHp, Number(targetResources.maxHitPoints ?? event.maxHitPoints ?? 0) || 0);
+    if (Number(event.sourceID) === actorId) maxHp = Math.max(maxHp, Number(sourceResources.maxHitPoints ?? 0) || 0);
+  }
+  return maxHp || undefined;
+}
+
+function actorLevelFromEvents(events: Record<string, unknown>[], actorId: number) {
+  for (const event of events) {
+    if (Number(event.sourceID) !== actorId && Number(event.targetID) !== actorId) continue;
+    const level = Number(event.level ?? toRecord(event.sourceResources).level ?? toRecord(event.targetResources).level ?? 0);
+    if (level > 0) return level;
+  }
+  return undefined;
 }
 
 function relativeSeconds(timestamp: unknown, fightStartTime: number) {
@@ -197,7 +222,19 @@ function parseFFLogsTankMitigations(payload: unknown, timeline: { events: Timeli
     damageTakenByTank.set(targetId, current);
   }
 
-  const orderedTanks = [...tankActors].sort((a, b) => {
+  const mitigationCastSourceIds = new Set<number>();
+  const knownSkillActionIds = new Set(tankSkills.map((skill) => skill.actionId).filter((id): id is number => Boolean(id)));
+  for (const event of events) {
+    if (event.type === "cast" && knownSkillActionIds.has(abilityIdOf(event))) {
+      mitigationCastSourceIds.add(Number(event.sourceID));
+    }
+  }
+
+  const activeTankActors = tankActors.filter((item) => {
+    const actorId = Number(item.actor.id);
+    return damageTakenByTank.has(actorId) || mitigationCastSourceIds.has(actorId) || Boolean(actorMaxHpFromEvents(events, actorId));
+  });
+  const orderedTanks = [...(activeTankActors.length >= 2 ? activeTankActors : tankActors)].sort((a, b) => {
     const aStats = damageTakenByTank.get(Number(a.actor.id)) ?? { hits: 0, damage: 0 };
     const bStats = damageTakenByTank.get(Number(b.actor.id)) ?? { hits: 0, damage: 0 };
     return bStats.hits - aStats.hits || bStats.damage - aStats.damage;
@@ -239,17 +276,37 @@ function parseFFLogsTankMitigations(payload: unknown, timeline: { events: Timeli
     });
   }
 
+  const mtActorId = mt ? Number(mt.actor.id) : 0;
+  const stActorId = st ? Number(st.actor.id) : 0;
   const tankInfo = mt && st
     ? {
       mtJob: mt.job,
       stJob: st.job,
       mtName: String(mt.actor.name ?? "MT"),
       stName: String(st.actor.name ?? "ST"),
+      mtLevel: Number(mt.actor.level) || actorLevelFromEvents(events, mtActorId),
+      stLevel: Number(st.actor.level) || actorLevelFromEvents(events, stActorId),
+      mtHp: actorMaxHpFromEvents(events, mtActorId),
+      stHp: actorMaxHpFromEvents(events, stActorId),
     }
     : null;
 
+  const mtName = tankInfo?.mtName;
+  const stName = tankInfo?.stName;
+  const eventsWithTankTargets = timeline.events.map((event) => {
+    const names = event.targetNames ?? [];
+    const hitsMt = Boolean(mtName && names.includes(mtName));
+    const hitsSt = Boolean(stName && names.includes(stName));
+    const target = hitsMt && hitsSt ? "bothTanks" : hitsMt ? "MT" : hitsSt ? "ST" : event.target;
+    return {
+      ...event,
+      target,
+      targetDamageLabel: names.length ? `对 ${names.map((name) => name === mtName ? `MT ${name}` : name === stName ? `ST ${name}` : name).join("、")} 的伤害` : event.targetDamageLabel,
+    };
+  });
+
   return {
-    events: timeline.events,
+    events: eventsWithTankTargets,
     assignments: importedAssignments.sort((a, b) => a.start - b.start),
     tankInfo,
     report: {
@@ -266,6 +323,6 @@ function parseFFLogsTankMitigations(payload: unknown, timeline: { events: Timeli
 
 export async function importFFLogsReportUrlWithTankMitigations(url: string): Promise<FFLogsTankMitigationImport> {
   const payload = await fetchFFLogsPayload(url);
-  const timeline = timelineFromHealerbookPayload(payload) ?? parseFFLogsJson(payload);
+  const timeline = timelineFromImportedPayload(payload) ?? parseFFLogsJson(payload);
   return parseFFLogsTankMitigations(payload, timeline);
 }
