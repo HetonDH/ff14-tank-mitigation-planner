@@ -9,12 +9,10 @@ import { SkillPalette } from "./components/SkillPalette";
 import { TimelineView } from "./components/TimelineView";
 import { WarningPanel } from "./components/WarningPanel";
 import { TutorialModal } from "./components/TutorialModal";
-import { exampleTimeline } from "./data/timelineExamples";
 import { findSkill, getSkillsForJob, jobNames, jobNamesEn } from "./data/tankJobs";
 import { planMitigations } from "./algorithms/mitigationPlanner";
 import type { AssignmentTarget, MitigationAssignment, PlannerSettings, PlannerWarning, PlayerRole, TankJob } from "./types/mitigation";
 import type { ParseReport, TimelineEvent } from "./types/timeline";
-import { parseTimelineFile } from "./utils/parseTimeline";
 import { parseFFLogsFile, parseFFLogsText } from "./utils/parseFFLogs";
 import { importFFLogsReportUrl } from "./utils/fflogsReport";
 import { downloadJson, readJsonFile } from "./utils/exportImport";
@@ -32,7 +30,6 @@ const initialSettings: PlannerSettings = {
 };
 
 function App() {
-  const [file, setFile] = useState<File | null>(null);
   const [fflogsUrl, setFflogsUrl] = useState("");
   const [logFile, setLogFile] = useState<File | null>(null);
   const [logText, setLogText] = useState("");
@@ -62,17 +59,6 @@ function App() {
   const skills = useMemo(() => getSkillsForJob(manualJob, manualLevel), [manualJob, manualLevel]);
   const assignments = useMemo(() => [...autoAssignments, ...manualAssignments].sort((a, b) => a.start - b.start), [autoAssignments, manualAssignments]);
   const maxTime = useMemo(() => Math.max(180, ...events.map((event) => event.time + (event.duration ?? 0)), ...assignments.map((item) => item.end)) + 20, [events, assignments]);
-
-  async function readTimeline() {
-    if (!file) return;
-    const parsed = await parseTimelineFile(file);
-    setEvents(parsed.events);
-    setReport(parsed.report);
-    setAutoAssignments([]);
-    setManualAssignments([]);
-    setWarnings([]);
-    setSelectedEvent(null);
-  }
 
   async function readLogTimeline(encounterId = logEncounterId) {
     setIsReadingLog(true);
@@ -121,14 +107,6 @@ function App() {
   async function selectLogEncounter(encounterId: string) {
     setLogEncounterId(encounterId);
     await readLogTimeline(encounterId);
-  }
-
-  function useExample() {
-    setEvents(exampleTimeline);
-    setReport({ fileName: language === "zh" ? "内置示例" : "Built-in example", eventCount: exampleTimeline.length, sheetName: language === "zh" ? "示例时间轴" : "Example timeline", recognizedColumns: ["time", "name", "damage", "type", "target", "duration", "notes"], skippedRows: [] });
-    setAutoAssignments([]);
-    setManualAssignments([]);
-    setWarnings([]);
   }
 
   function generatePlan() {
@@ -273,7 +251,7 @@ function App() {
           onSettingsChange={(next) => { setSettings(next); setAutoAssignments([]); }}
         />
       }
-      left={<ImportPanel language={language} file={file} fflogsUrl={fflogsUrl} logFile={logFile} logText={logText} logEncounterId={logEncounterId} isReadingLog={isReadingLog} report={report} events={events} onFileChange={setFile} onFFLogsUrlChange={setFflogsUrl} onLogFileChange={(nextFile) => { setLogFile(nextFile); setLogEncounterId(""); }} onLogTextChange={(text) => { setLogText(text); setLogEncounterId(""); }} onLogEncounterChange={selectLogEncounter} onRead={readTimeline} onImportFFLogsUrl={importFFLogsUrlTimeline} onReadLog={() => readLogTimeline()} onUseExample={useExample} />}
+      left={<ImportPanel language={language} fflogsUrl={fflogsUrl} logFile={logFile} logText={logText} logEncounterId={logEncounterId} isReadingLog={isReadingLog} report={report} events={events} onFFLogsUrlChange={setFflogsUrl} onLogFileChange={(nextFile) => { setLogFile(nextFile); setLogEncounterId(""); }} onLogTextChange={(text) => { setLogText(text); setLogEncounterId(""); }} onLogEncounterChange={selectLogEncounter} onImportFFLogsUrl={importFFLogsUrlTimeline} onReadLog={() => readLogTimeline()} />}
       center={
         <div className="space-y-3">
           <TimelineView language={language} events={events} assignments={assignments} maxTime={maxTime} onSelectEvent={setSelectedEvent} onDropSkill={addManualSkill} onMoveAssignment={moveManualAssignment} onDeleteManual={(id) => setManualAssignments((current) => current.filter((item) => item.id !== id))} skills={skills} />

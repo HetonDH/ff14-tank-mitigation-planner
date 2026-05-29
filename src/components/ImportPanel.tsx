@@ -1,4 +1,4 @@
-import { FileSpreadsheet, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import type { ParseReport, TimelineEvent } from "../types/timeline";
 import { formatTime } from "../utils/time";
 import { labelsFor } from "../utils/labels";
@@ -6,7 +6,6 @@ import type { UiLanguage } from "../types/ui";
 
 interface Props {
   language: UiLanguage;
-  file: File | null;
   fflogsUrl: string;
   logFile: File | null;
   logText: string;
@@ -14,30 +13,22 @@ interface Props {
   isReadingLog: boolean;
   report: ParseReport | null;
   events: TimelineEvent[];
-  onFileChange: (file: File | null) => void;
   onFFLogsUrlChange: (url: string) => void;
   onLogFileChange: (file: File | null) => void;
   onLogTextChange: (text: string) => void;
   onLogEncounterChange: (id: string) => void;
-  onRead: () => void;
   onImportFFLogsUrl: () => void;
   onReadLog: () => void;
-  onUseExample: () => void;
 }
 
-export function ImportPanel({ language, file, fflogsUrl, logFile, logText, logEncounterId, isReadingLog, report, events, onFileChange, onFFLogsUrlChange, onLogFileChange, onLogTextChange, onLogEncounterChange, onRead, onImportFFLogsUrl, onReadLog, onUseExample }: Props) {
+export function ImportPanel({ language, fflogsUrl, logFile, logText, logEncounterId, isReadingLog, report, events, onFFLogsUrlChange, onLogFileChange, onLogTextChange, onLogEncounterChange, onImportFFLogsUrl, onReadLog }: Props) {
   const zh = language === "zh";
   const { eventTypeLabels, severityLabels, timelineTargetLabels } = labelsFor(language);
   return (
     <section className="tool-panel p-4">
-      <h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><FileSpreadsheet size={18} />{zh ? "导入时间轴" : "Import timeline"}</h2>
-      <input className="field w-full" type="file" accept=".xlsx,.xls,.csv" onChange={(event) => onFileChange(event.target.files?.[0] ?? null)} />
-      <div className="mt-3 flex gap-2">
-        <button className="btn btn-primary flex-1" onClick={onRead} disabled={!file}><Upload size={16} />{zh ? "读取时间轴" : "Read timeline"}</button>
-        <button className="btn flex-1" onClick={onUseExample}>{zh ? "使用示例时间轴" : "Use example"}</button>
-      </div>
-      <div className="mt-4 rounded-md border border-cyan-500/20 bg-cyan-500/5 p-3">
-        <div className="mb-2 text-sm font-semibold text-cyan-100">{zh ? "FFLogs 标准导入" : "FFLogs standard import"}</div>
+      <h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><Upload size={18} />{zh ? "导入战斗记录" : "Import fight log"}</h2>
+      <div className="rounded-md border border-cyan-500/20 bg-cyan-500/5 p-3">
+        <div className="mb-2 text-sm font-semibold text-cyan-100">{zh ? "FFLogs 链接导入" : "FFLogs link import"}</div>
         <input
           className="field w-full"
           value={fflogsUrl}
@@ -48,9 +39,9 @@ export function ImportPanel({ language, file, fflogsUrl, logFile, logText, logEn
           <Upload size={16} />{isReadingLog ? (zh ? "正在导入 FFLogs..." : "Importing FFLogs...") : (zh ? "按报告链接导入" : "Import report URL")}
         </button>
         <div className="mt-2 text-xs text-slate-400">
-          {zh ? "参考 healerbook：报告链接会交给 Worker 代理读取 FFLogs 标准事件流；未配置代理时请先用下方 JSON/本地日志兜底。" : "Healerbook-style flow: report URLs go through a Worker proxy for standard FFLogs events. Without a proxy, use JSON/local log below."}
+          {zh ? "优先使用这个入口：粘贴 FFLogs 报告链接后，会读取标准伤害事件并生成时间轴。" : "Use this first: paste a FFLogs report URL to import standard damage events."}
         </div>
-        <div className="mt-4 border-t border-cyan-500/10 pt-3 text-sm font-semibold text-cyan-100">{zh ? "JSON / 本地日志兜底" : "JSON / local log fallback"}</div>
+        <div className="mt-4 border-t border-cyan-500/10 pt-3 text-sm font-semibold text-cyan-100">{zh ? "日志文件 / JSON 兜底" : "Log file / JSON fallback"}</div>
         <input className="field w-full" type="file" accept=".json,.txt,.log" onChange={(event) => onLogFileChange(event.target.files?.[0] ?? null)} />
         <textarea
           className="field mt-2 h-24 w-full resize-none text-xs"
