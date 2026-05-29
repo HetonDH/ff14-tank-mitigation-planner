@@ -5,6 +5,7 @@ import type { UiLanguage } from "../types/ui";
 import { findSkill } from "../data/tankJobs";
 import { labelsFor } from "../utils/labels";
 import { formatTime } from "../utils/time";
+import { xivIconUrl } from "../utils/icons";
 
 interface Props {
   language: UiLanguage;
@@ -28,8 +29,8 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
   const eventLaneTop = 36;
   const eventHeight = 56;
   const eventGap = 16;
-  const assignmentHeight = 34;
-  const assignmentGap = 8;
+  const assignmentHeight = 46;
+  const assignmentGap = 7;
 
   function xFor(time: number) {
     return (time / safeMax) * width;
@@ -69,7 +70,7 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
       .sort((a, b) => a.start - b.start)
       .map((assignment) => {
         const left = xFor(assignment.start);
-        const blockWidth = Math.max(104, assignment.duration * pixelsPerSecond);
+        const blockWidth = Math.max(136, assignment.duration * pixelsPerSecond);
         const lane = laneEnds.findIndex((end) => left > end + 8);
         const laneIndex = lane >= 0 ? lane : laneEnds.length;
         laneEnds[laneIndex] = left + blockWidth;
@@ -135,16 +136,18 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
           <div className="absolute left-0 h-px w-full bg-slate-800" style={{ top: mtLaneTop - 4 }} />
           <div className="absolute left-0 h-px w-full bg-slate-800" style={{ top: stLaneTop - 4 }} />
           <div className="absolute left-3 top-3 text-xs text-slate-500">{zh ? "事件" : "Events"}</div>
-          <div className="absolute left-3 text-xs text-cyan-200" style={{ top: mtLaneTop - 26 }}>MT {zh ? "减伤轴" : "mitigation"}</div>
-          <div className="absolute left-3 text-xs text-emerald-200" style={{ top: stLaneTop - 26 }}>ST {zh ? "减伤轴" : "mitigation"}</div>
+          <div className="absolute left-14 text-xs text-cyan-200" style={{ top: mtLaneTop - 26 }}>MT {zh ? "减伤轴" : "mitigation"}</div>
+          <div className="absolute left-14 text-xs text-emerald-200" style={{ top: stLaneTop - 26 }}>ST {zh ? "减伤轴" : "mitigation"}</div>
 
           {eventBlocks.map(({ event, left, top, width: eventWidth }) => (
             <div key={event.id}>
               <div
                 className={`pointer-events-none absolute z-20 border-l-2 ${judgmentLineClass(event)}`}
-                style={{ left, top: Math.max(0, top - 16), height: eventHeight + 20 }}
+                style={{ left, top: Math.max(0, top - 18), height: eventHeight + 22 }}
               >
-                <div className="absolute -left-[4px] top-0 h-2 w-2 rounded-full bg-current" />
+                <div className="absolute -left-px top-0 -translate-x-full rounded bg-slate-950/95 px-1 py-0.5 text-[10px] font-semibold shadow-sm">
+                  {formatTime(event.time)}
+                </div>
               </div>
               <button
                 className={`absolute z-10 overflow-hidden rounded-md border px-2 py-1 text-left text-[11px] leading-tight ${eventClass(event)}`}
@@ -154,10 +157,6 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
               >
                 <div className="truncate font-semibold">{event.name}</div>
                 <div className="truncate">{timelineTargetLabels[event.target]} · {eventTypeLabels[event.type]}</div>
-                <div className="truncate">
-                  {formatTime(event.time)}
-                  {event.duration ? `-${formatTime(event.time + event.duration)}` : ""}
-                </div>
                 <div className="truncate">{event.damage ? `${Math.round(event.damage).toLocaleString()} ${zh ? "伤害" : "damage"}` : ""}</div>
               </button>
             </div>
@@ -166,9 +165,19 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
           {assignmentBlocks.map(({ assignment, left, top, width: assignmentWidth }) => (
             (() => {
               const hasConflict = assignment.warning?.includes("冲突") || assignment.warning?.toLowerCase().includes("conflict") || false;
+              const skill = findSkill(assignment.skillId);
+              const lineTone = assignment.casterRole === "MT" ? "border-cyan-200 text-cyan-100" : "border-emerald-200 text-emerald-100";
               return (
+            <div key={assignment.id}>
+              <div
+                className={`pointer-events-none absolute z-20 border-l-2 ${lineTone}`}
+                style={{ left, top: Math.max(0, top - 13), height: assignmentHeight + 15 }}
+              >
+                <div className="absolute -left-px top-0 -translate-x-full rounded bg-slate-950/95 px-1 py-0.5 text-[10px] font-semibold shadow-sm">
+                  {formatTime(assignment.start)}
+                </div>
+              </div>
             <button
-              key={assignment.id}
               className={`absolute rounded-md border px-2 py-1 text-left text-[11px] ${hasConflict ? "border-red-400 bg-red-500/30 text-red-50" : assignment.source === "auto" ? "border-cyan-400/50 bg-cyan-500/15 text-cyan-50" : assignment.source === "log" ? "border-violet-400/50 bg-violet-500/15 text-violet-50" : "border-emerald-400/50 bg-emerald-500/15 text-emerald-50"}`}
               style={{ left, top, width: assignmentWidth, height: assignmentHeight }}
               onDoubleClick={() => assignment.source === "manual" && onDeleteManual(assignment.id)}
@@ -178,11 +187,17 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
                   event.dataTransfer.setData("text/plain", `move-assignment:${assignment.id}`);
                 }
               }}
-              title={assignment.source === "manual" ? (zh ? "拖动可调整时间，双击删除手动减伤" : "Drag to adjust time, double-click to delete manual mitigation") : assignment.warning}
+              title={`${formatTime(assignment.start)} · ${assignment.source === "manual" ? (zh ? "拖动可调整时间，双击删除手动减伤" : "Drag to adjust time, double-click to delete manual mitigation") : assignment.warning ?? ""}`}
             >
-              <div className="truncate font-semibold">{zh ? assignment.skillName : findSkill(assignment.skillId)?.enName ?? assignment.skillName}</div>
-              <div>{assignment.casterRole} → {assignmentTargetLabels[assignment.target]}</div>
+              <div className="flex min-w-0 items-center gap-1.5">
+                {skill?.icon ? <img className="h-6 w-6 shrink-0 rounded border border-white/10" src={xivIconUrl(skill.icon)} alt="" /> : null}
+                <div className="min-w-0">
+                  <div className="truncate font-semibold">{zh ? assignment.skillName : skill?.enName ?? assignment.skillName}</div>
+                  <div className="truncate text-[10px] opacity-85">{formatTime(assignment.start)} · {assignment.casterRole} → {assignmentTargetLabels[assignment.target]}</div>
+                </div>
+              </div>
             </button>
+            </div>
               );
             })()
           ))}

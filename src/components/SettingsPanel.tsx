@@ -1,6 +1,7 @@
 import type { PlannerSettings, PlayerRole, TankJob } from "../types/mitigation";
 import { jobNames, jobNamesEn } from "../data/tankJobs";
 import type { UiLanguage } from "../types/ui";
+import { jobIconUrls } from "../utils/icons";
 
 interface Props {
   playerRole: PlayerRole;
@@ -26,16 +27,38 @@ interface Props {
 
 const jobs: TankJob[] = ["PLD", "WAR", "DRK", "GNB"];
 
+function JobMarker({ role, job, active, onClick }: { role: PlayerRole; job: TankJob; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative z-10 flex h-14 w-14 items-center justify-center rounded-full border bg-slate-950 shadow-lg transition ${active ? "border-cyan-300 ring-2 ring-cyan-300/40" : "border-slate-700 hover:border-slate-500"}`}
+      title={role}
+    >
+      <span className="absolute text-[11px] font-bold text-slate-500">{job}</span>
+      <img className="h-10 w-10 object-contain" src={jobIconUrls[job]} alt="" />
+      <span className={`absolute -right-2 -top-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${role === "MT" ? "bg-cyan-400 text-cyan-950" : "bg-emerald-400 text-emerald-950"}`}>{role}</span>
+    </button>
+  );
+}
+
 export function SettingsPanel(props: Props) {
   const { settings } = props;
   const zh = props.language === "zh";
   const jobLabel = zh ? jobNames : jobNamesEn;
   return (
     <section className="tool-panel p-4">
-      <div className="space-y-3">
+      <div className="grid grid-cols-[88px_1fr] gap-3">
+        <div className="relative flex flex-col items-center justify-start pt-5">
+          <div className="absolute top-12 h-[92px] w-px bg-gradient-to-b from-cyan-300 via-slate-500 to-emerald-300" />
+          <JobMarker role="MT" job={props.mtJob} active={props.playerRole === "MT"} onClick={() => props.onRoleChange("MT")} />
+          <div className="h-8" />
+          <JobMarker role="ST" job={props.stJob} active={props.playerRole === "ST"} onClick={() => props.onRoleChange("ST")} />
+          <div className="mt-2 text-center text-[10px] text-slate-500">{zh ? "当前操控" : "Control"}</div>
+        </div>
+        <div className="space-y-3">
         <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-        <div className="grid grid-cols-[56px_1fr_140px_180px_auto] items-end gap-3">
-          <div className="pb-2 text-sm font-semibold text-cyan-200">MT</div>
+        <div className="grid grid-cols-[1fr_140px_180px_auto] items-end gap-3">
           <label className="text-xs text-slate-400">
             {zh ? "职业" : "Job"}
             <select className="field mt-1 w-full" value={props.mtJob} onChange={(event) => props.onMtJobChange(event.target.value as TankJob)}>
@@ -58,8 +81,7 @@ export function SettingsPanel(props: Props) {
         </div>
 
         <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-        <div className="grid grid-cols-[56px_1fr_140px_180px_auto] items-end gap-3">
-          <div className="pb-2 text-sm font-semibold text-emerald-200">ST</div>
+        <div className="grid grid-cols-[1fr_140px_180px_auto] items-end gap-3">
           <label className="text-xs text-slate-400">
             {zh ? "职业" : "Job"}
             <select className="field mt-1 w-full" value={props.stJob} onChange={(event) => props.onStJobChange(event.target.value as TankJob)}>
@@ -74,13 +96,7 @@ export function SettingsPanel(props: Props) {
             {zh ? "血量" : "HP"}
             <input className="field mt-1 w-full" type="number" min={1} value={props.stHp} onChange={(event) => props.onStHpChange(Number(event.target.value))} />
           </label>
-          <label className="text-xs text-slate-400">
-            {zh ? "当前操控" : "Control"}
-            <select className="field mt-1 w-full" value={props.playerRole} onChange={(event) => props.onRoleChange(event.target.value as PlayerRole)}>
-              <option value="MT">MT</option>
-              <option value="ST">ST</option>
-            </select>
-          </label>
+          <div className="rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-300">{zh ? "点左侧图标切换操控" : "Click left icon to control"}</div>
         </div>
         </div>
 
@@ -104,6 +120,7 @@ export function SettingsPanel(props: Props) {
           <label className="flex items-center gap-2 rounded-md border border-slate-700 px-3 py-2"><input type="checkbox" checked={settings.avoidBurstWindows} onChange={(event) => props.onSettingsChange({ ...settings, avoidBurstWindows: event.target.checked })} />{zh ? "避让爆发" : "Avoid burst"}</label>
         </div>
         </div>
+      </div>
       </div>
     </section>
   );

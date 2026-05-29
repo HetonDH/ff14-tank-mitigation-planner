@@ -1,6 +1,7 @@
 import type { MitigationSkill } from "../types/mitigation";
 import type { UiLanguage } from "../types/ui";
 import { labelsFor } from "../utils/labels";
+import { xivIconUrl } from "../utils/icons";
 import { JobBadge } from "./JobSelector";
 
 interface Props {
@@ -29,7 +30,10 @@ export function SkillPalette({ language, skills, activeRole, activeJobName }: Pr
             title={skill.notes}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-slate-100">{zh ? skill.zhName : skill.enName}</span>
+              <span className="flex min-w-0 items-center gap-2 font-medium text-slate-100">
+                {skill.icon ? <img className="h-7 w-7 shrink-0 rounded border border-white/10" src={xivIconUrl(skill.icon)} alt="" /> : null}
+                <span className="truncate">{zh ? skill.zhName : skill.enName}</span>
+              </span>
               <JobBadge job={skill.job} language={language} />
             </div>
             <div className="mt-1 text-xs text-slate-400">{zh ? "冷却" : "Cooldown"} {skill.cooldown}s · {zh ? "持续" : "Duration"} {skill.duration}s · {categoryLabels[skill.category]}</div>
