@@ -1,6 +1,11 @@
 let cachedToken = "";
 let tokenExpiresAt = 0;
 
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const actionChinese = require("../../src/data/actionChinese.json");
+
 const FFLOGS_TOKEN_URL = "https://www.fflogs.com/oauth/token";
 
 function json(res, status, body) {
@@ -108,6 +113,14 @@ async function getReport(reportCode, region) {
   return report;
 }
 
+function localizeAbilities(abilities) {
+  return (abilities ?? []).map((ability) => ({
+    ...ability,
+    originalName: ability.name,
+    name: actionChinese[String(ability.gameID)] ?? ability.name,
+  }));
+}
+
 async function getDamageTakenEvents(reportCode, start, end, region) {
   const query = `
     query GetEvents($code: String!, $startTime: Float, $endTime: Float, $dataType: EventDataType!, $hostilityType: HostilityType, $includeResources: Boolean, $limit: Int) {
@@ -190,7 +203,8 @@ export default async function handler(req, res) {
       return;
     }
 
-    const fightId = fightIdParam ? Number(fightIdParam) : fights[fights.length - 1].id;
+    const defaultFight = [...fights].reverse().find((item) => Number(item.encounterID) > 0) ?? fights[fights.length - 1];
+    const fightId = fightIdParam ? Number(fightIdParam) : defaultFight.id;
     const fight = fights.find((item) => item.id === fightId);
     if (!fight) {
       json(res, 404, { error: `战斗 #${fightId} 不存在。` });
@@ -206,7 +220,7 @@ export default async function handler(req, res) {
       region: resolvedRegion,
       events,
       actors: report.masterData?.actors ?? [],
-      abilities: report.masterData?.abilities ?? [],
+      abilities: localizeAbilities(report.masterData?.abilities),
     });
   } catch (error) {
     json(res, 502, { error: error instanceof Error ? error.message : "FFLogs API 调用失败。" });

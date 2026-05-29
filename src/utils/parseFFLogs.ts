@@ -17,6 +17,8 @@ const UNKNOWN_ABILITY_PATTERN = /^unknown_[0-9a-f]+$/i;
 const HIGH_END_ZONE_PATTERN = /(阿卡狄亚|阿卡迪亚|至天之座|登天斗技场|轻量级|中量级|重量级|零式|绝境战|歼灭战|讨伐战|Arcadion|AAC|Savage|Ultimate|Extreme)/i;
 const GROUP_WINDOW_MS = 900;
 const AUTO_WINDOW_GAP_MS = 9_000;
+const MULTI_HIT_WINDOW_GAP = 2.6;
+const AUTO_TIMELINE_WINDOW_GAP = 9;
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
@@ -102,6 +104,53 @@ function classifyEvent(targets: FFLogsActor[], tankIds: Set<number>, abilityName
   return { type: "aoe", target: uniqueCount >= 3 ? "party" : "self", severity: damage >= 90000 ? "high" : "medium" };
 }
 
+function compactRepeatedTimelineEvents(events: TimelineEvent[]): TimelineEvent[] {
+  const sorted = [...events].sort((a, b) => a.time - b.time);
+  const result: TimelineEvent[] = [];
+  const used = new Set<string>();
+
+  for (const event of sorted) {
+    if (used.has(event.id)) continue;
+    const gapLimit = event.type === "auto" ? AUTO_TIMELINE_WINDOW_GAP : MULTI_HIT_WINDOW_GAP;
+    const group = [event];
+    used.add(event.id);
+
+    for (const candidate of sorted) {
+      if (used.has(candidate.id)) continue;
+      const previous = group[group.length - 1];
+      if (candidate.time < previous.time) continue;
+      if (candidate.time - previous.time > gapLimit) continue;
+      if (candidate.name !== event.name) continue;
+      if (candidate.type !== event.type) continue;
+      if (candidate.target !== event.target) continue;
+      group.push(candidate);
+      used.add(candidate.id);
+    }
+
+    if (group.length === 1) {
+      result.push(event);
+      continue;
+    }
+
+    const first = group[0];
+    const last = group[group.length - 1];
+    const damages = group.map((item) => item.damage ?? 0).filter((damage) => damage > 0);
+    const maxDamage = Math.max(...damages, 0);
+    const averageDamage = damages.length ? Math.round(damages.reduce((sum, damage) => sum + damage, 0) / damages.length) : 0;
+    result.push({
+      ...first,
+      id: `${first.id}-window`,
+      name: first.type === "auto" ? "平 A" : first.name,
+      duration: Math.max(first.type === "auto" ? 3 : 1.5, Math.round((last.time - first.time + (first.type === "auto" ? 3 : 1.2)) * 10) / 10),
+      damage: first.type === "auto" ? averageDamage || maxDamage || undefined : maxDamage || undefined,
+      severity: group.some((item) => item.severity === "lethal") ? "lethal" : group.some((item) => item.severity === "high") ? "high" : first.severity,
+      notes: `${first.notes ?? ""}${first.notes ? "；" : ""}已合并 ${group.length} 次连续判定，最高 ${maxDamage.toLocaleString()}，平均 ${averageDamage.toLocaleString()}。`,
+    });
+  }
+
+  return result.sort((a, b) => a.time - b.time);
+}
+
 export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; report: ParseReport } {
   const input = extractFFLogsInput(json);
   const actorMap = new Map(input.actors.filter((actor) => actor?.id).map((actor) => [actor.id, actor]));
@@ -110,27 +159,50 @@ export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; repor
   const tankIds = new Set(tankActors.map((actor) => actor.id));
   const skippedRows: ParseReport["skippedRows"] = [];
 
-  const details = input.events
+  const detailMap = new Map<string, {
+    event: FFLogsEvent;
+    abilityId: number;
+    abilityName: string;
+    damage: number;
+    target: FFLogsActor;
+  }>();
+
+  input.events
     .filter((event) => event.type === "damage" || event.type === "calculateddamage")
-    .filter((event) => event.targetID && actorMap.has(event.targetID))
-    .filter((event) => !(event.sourceID && actorMap.has(event.sourceID)))
-    .filter((event) => abilityIdOf(event) !== 500000)
-    .map((event, index) => {
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .forEach((event, index) => {
+      if (!event.targetID || !actorMap.has(event.targetID)) return;
+      if (event.sourceID && actorMap.has(event.sourceID)) return;
       const abilityId = abilityIdOf(event);
-      const ability = abilityMap.get(abilityId);
-      const target = actorMap.get(event.targetID ?? 0);
+      if (abilityId === 500000) return;
+      const target = actorMap.get(event.targetID);
       if (!target) {
         skippedRows.push({ row: index + 1, reason: "目标不是玩家", raw: event });
+        return;
       }
-      return {
-        event,
-        abilityId,
-        abilityName: ability?.name ?? `unknown_${abilityId.toString(16)}`,
-        damage: eventDamage(event),
-        target,
-      };
-    })
-    .filter((item) => item.target && item.damage >= 0)
+      const ability = abilityMap.get(abilityId);
+      const key = `${event.packetID ?? event.timestamp}-${event.targetID}-${abilityId}`;
+      const current = detailMap.get(key);
+      const damage = event.type === "damage" ? eventDamage(event) : 0;
+      if (current) {
+        detailMap.set(key, {
+          ...current,
+          event: current.event.type === "calculateddamage" ? current.event : event.timestamp < current.event.timestamp ? event : current.event,
+          damage: Math.max(current.damage, damage),
+        });
+      } else {
+        detailMap.set(key, {
+          event,
+          abilityId,
+          abilityName: ability?.name ?? `unknown_${abilityId.toString(16)}`,
+          damage,
+          target,
+        });
+      }
+    });
+
+  const details = [...detailMap.values()]
+    .filter((item) => item.damage >= 0)
     .sort((a, b) => a.event.timestamp - b.event.timestamp);
 
   const timelineEvents: TimelineEvent[] = [];
@@ -174,11 +246,13 @@ export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; repor
     });
   }
 
+  const compactedEvents = compactRepeatedTimelineEvents(timelineEvents);
+
   return {
-    events: timelineEvents.sort((a, b) => a.time - b.time),
+    events: compactedEvents,
     report: {
       fileName: input.title ?? "FFLogs JSON",
-      eventCount: timelineEvents.length,
+      eventCount: compactedEvents.length,
       sheetName: "FFLogs damage events",
       recognizedColumns: ["events", "actors/friendlies", "abilities/masterData"],
       skippedRows,
