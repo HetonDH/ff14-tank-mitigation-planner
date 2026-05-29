@@ -175,7 +175,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    const report = await getReport(reportCode, region);
+    let report;
+    let resolvedRegion = region;
+    try {
+      report = await getReport(reportCode, resolvedRegion);
+    } catch (error) {
+      const fallbackRegion = resolvedRegion === "cn" ? "www" : "cn";
+      report = await getReport(reportCode, fallbackRegion);
+      resolvedRegion = fallbackRegion;
+    }
     const fights = Array.isArray(report.fights) ? report.fights : [];
     if (!fights.length) {
       json(res, 404, { error: "报告中没有战斗记录。" });
@@ -189,13 +197,13 @@ export default async function handler(req, res) {
       return;
     }
 
-    const events = await getDamageTakenEvents(reportCode, fight.startTime, fight.endTime, region);
+    const events = await getDamageTakenEvents(reportCode, fight.startTime, fight.endTime, resolvedRegion);
     json(res, 200, {
       title: `${report.title ?? "FFLogs"} - ${fight.name ?? `战斗 ${fightId}`}`,
       reportCode,
       fightId,
       fightStartTime: fight.startTime,
-      region,
+      region: resolvedRegion,
       events,
       actors: report.masterData?.actors ?? [],
       abilities: report.masterData?.abilities ?? [],

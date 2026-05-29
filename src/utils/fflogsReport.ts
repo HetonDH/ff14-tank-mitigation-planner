@@ -6,6 +6,7 @@ export interface ParsedFFLogsUrl {
   reportCode: string | null;
   fightId: number | null;
   isLastFight: boolean;
+  region: "cn" | "www";
 }
 
 export function parseFFLogsUrl(input: string): ParsedFFLogsUrl {
@@ -13,6 +14,14 @@ export function parseFFLogsUrl(input: string): ParsedFFLogsUrl {
   let reportCode: string | null = null;
   let fightId: number | null = null;
   let isLastFight = false;
+  let region: "cn" | "www" = "cn";
+
+  try {
+    const parsedUrl = new URL(text);
+    if (parsedUrl.hostname.startsWith("www.")) region = "www";
+  } catch {
+    // 纯报告代码默认按国服区域尝试，代理会再 fallback 到国际区。
+  }
 
   const reportMatch = text.match(/reports\/(a:[a-zA-Z0-9]+|[a-zA-Z0-9]+)/);
   if (reportMatch) {
@@ -31,7 +40,7 @@ export function parseFFLogsUrl(input: string): ParsedFFLogsUrl {
     isLastFight = true;
   }
 
-  return { reportCode, fightId, isLastFight };
+  return { reportCode, fightId, isLastFight, region };
 }
 
 function mapHealerbookType(type: string | undefined): TimelineEventType {
@@ -97,6 +106,7 @@ export async function importFFLogsReportUrl(url: string): Promise<{ events: Time
 
   const proxyBase = (import.meta.env.VITE_FFLOGS_PROXY_BASE ?? "/api").replace(/\/+$/, "");
   const params = new URLSearchParams({ reportCode: parsed.reportCode });
+  params.set("region", parsed.region);
   if (!parsed.isLastFight && parsed.fightId !== null) params.set("fightId", String(parsed.fightId));
   const response = await fetch(`${proxyBase}/fflogs/import?${params.toString()}`);
   if (!response.ok) throw new Error(`FFLogs 导入失败：HTTP ${response.status}`);

@@ -19,6 +19,22 @@
 
 ## 本地运行
 
+复制环境变量模板：
+
+```bash
+cp .env.example .env.local
+```
+
+填入 FFLogs 凭据：
+
+```text
+FFLOGS_CLIENT_ID=你的 FFLogs Client ID
+FFLOGS_CLIENT_SECRET=你的 FFLogs Client Secret
+FFLOGS_REGION=cn
+```
+
+然后运行：
+
 ```bash
 npm install
 npm run dev
@@ -29,6 +45,8 @@ npm run dev
 ```text
 http://localhost:5173
 ```
+
+现在 `npm run dev` 会同时启动网页和本地 `/api/fflogs/import`，可以直接粘贴 FFLogs 链接测试。
 
 如果使用本机 E 盘便携环境：
 
@@ -61,6 +79,8 @@ FFLOGS_REGION=cn
 ```text
 https://www.fflogs.com/reports/ABC123#fight=5
 ```
+
+`zh.fflogs.com` / `www.fflogs.com` 链接都可以贴；如果区域不匹配，代理会尝试在国服区和国际区之间自动 fallback。
 
 如果前端和代理分开部署，再额外设置：
 
