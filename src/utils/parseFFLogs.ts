@@ -17,7 +17,7 @@ const UNKNOWN_ABILITY_PATTERN = /^unknown_[0-9a-f]+$/i;
 const HIGH_END_ZONE_PATTERN = /(阿卡狄亚|阿卡迪亚|至天之座|登天斗技场|轻量级|中量级|重量级|零式|绝境战|歼灭战|讨伐战|Arcadion|AAC|Savage|Ultimate|Extreme)/i;
 const GROUP_WINDOW_MS = 900;
 const AUTO_WINDOW_GAP_MS = 9_000;
-const MULTI_HIT_WINDOW_GAP = 2.6;
+const MULTI_HIT_WINDOW_GAP = 3.4;
 const AUTO_TIMELINE_WINDOW_GAP = 9;
 
 function asArray(value: unknown): unknown[] {
