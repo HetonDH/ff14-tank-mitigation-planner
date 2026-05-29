@@ -17,7 +17,7 @@ const UNKNOWN_ABILITY_PATTERN = /^unknown_[0-9a-f]+$/i;
 const HIGH_END_ZONE_PATTERN = /(阿卡狄亚|阿卡迪亚|至天之座|登天斗技场|轻量级|中量级|重量级|零式|绝境战|歼灭战|讨伐战|Arcadion|AAC|Savage|Ultimate|Extreme)/i;
 const GROUP_WINDOW_MS = 900;
 const AUTO_WINDOW_GAP_MS = 9_000;
-const MECHANIC_CHAIN_MAX_IDLE = 8;
+const SHORT_MULTI_HIT_MAX_IDLE = 1.6;
 const AUTO_TIMELINE_WINDOW_GAP = 9;
 
 function asArray(value: unknown): unknown[] {
@@ -100,8 +100,7 @@ function classifyEvent(targets: FFLogsActor[], tankIds: Set<number>, abilityName
   if (uniqueCount >= 5) return { type: "aoe", target: "party", severity: damage >= 90000 ? "high" : "medium" };
   if (tankHitCount >= 2 && uniqueCount <= 2) return { type: "spreadTankbuster", target: "bothTanks", severity: damage >= 140000 ? "lethal" : "high" };
   if (tankHitCount === 1 && uniqueCount === 1) return { type: "singleTankbuster", target: "MT", severity: damage >= 140000 ? "lethal" : "high" };
-  if (tankHitCount >= 2) return { type: "sharedTankbuster", target: "bothTanks", severity: damage >= 140000 ? "lethal" : "high" };
-  return { type: "aoe", target: uniqueCount >= 3 ? "party" : "self", severity: damage >= 90000 ? "high" : "medium" };
+  return { type: "aoe", target: uniqueCount >= 2 ? "party" : "self", severity: damage >= 90000 ? "high" : "medium" };
 }
 
 type ParsedTimelineEvent = TimelineEvent & {
@@ -118,7 +117,7 @@ function compactRepeatedTimelineEvents(events: ParsedTimelineEvent[]): TimelineE
 
   for (const event of sorted) {
     if (used.has(event.id)) continue;
-    const gapLimit = event.type === "auto" ? AUTO_TIMELINE_WINDOW_GAP : MECHANIC_CHAIN_MAX_IDLE;
+    const gapLimit = event.type === "auto" ? AUTO_TIMELINE_WINDOW_GAP : SHORT_MULTI_HIT_MAX_IDLE;
     const group = [event];
     used.add(event.id);
 
@@ -130,6 +129,7 @@ function compactRepeatedTimelineEvents(events: ParsedTimelineEvent[]): TimelineE
       if (candidate.name !== event.name) continue;
       if (event.type === "auto" && candidate.type !== event.type) continue;
       if (event.type !== "auto" && !compatibleSignature(candidate.sourceSignature, event.sourceSignature)) continue;
+      if (event.type !== "auto" && !compatibleSignature(candidate.targetSignature, event.targetSignature)) continue;
       group.push(candidate);
       used.add(candidate.id);
     }
