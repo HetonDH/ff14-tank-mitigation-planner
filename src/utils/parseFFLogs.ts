@@ -107,6 +107,8 @@ function classifyEvent(targets: FFLogsActor[], tankIds: Set<number>, abilityName
 type ParsedTimelineEvent = TimelineEvent & {
   targetSignature?: string;
   sourceSignature?: string;
+  targetCount?: number;
+  tankHitCount?: number;
 };
 
 function compactRepeatedTimelineEvents(events: ParsedTimelineEvent[]): TimelineEvent[] {
@@ -126,9 +128,7 @@ function compactRepeatedTimelineEvents(events: ParsedTimelineEvent[]): TimelineE
       if (candidate.time < previous.time) continue;
       if (candidate.time - previous.time > gapLimit) continue;
       if (candidate.name !== event.name) continue;
-      if (candidate.type !== event.type) continue;
-      if (candidate.target !== event.target) continue;
-      if (event.type !== "auto" && !compatibleSignature(candidate.targetSignature, event.targetSignature)) continue;
+      if (event.type === "auto" && candidate.type !== event.type) continue;
       if (event.type !== "auto" && !compatibleSignature(candidate.sourceSignature, event.sourceSignature)) continue;
       group.push(candidate);
       used.add(candidate.id);
@@ -144,14 +144,33 @@ function compactRepeatedTimelineEvents(events: ParsedTimelineEvent[]): TimelineE
     const damages = group.map((item) => item.damage ?? 0).filter((damage) => damage > 0);
     const maxDamage = Math.max(...damages, 0);
     const averageDamage = damages.length ? Math.round(damages.reduce((sum, damage) => sum + damage, 0) / damages.length) : 0;
+    const mergedTargetIds = new Set(group.flatMap((item) => item.targetSignature?.split(".").filter(Boolean) ?? []));
+    const targetCount = mergedTargetIds.size || Math.max(...group.map((item) => item.targetCount ?? 0), 0);
+    const tankHitCount = Math.max(...group.map((item) => item.tankHitCount ?? 0), 0);
+    const mergedType: TimelineEventType = first.type === "auto"
+      ? "auto"
+      : targetCount >= 5
+        ? "aoe"
+        : tankHitCount >= 2 && targetCount <= 2
+          ? "spreadTankbuster"
+          : targetCount > 2
+            ? "aoe"
+            : first.type;
+    const mergedTarget: TimelineTarget = mergedType === "aoe"
+      ? "party"
+      : mergedType === "spreadTankbuster" || mergedType === "sharedTankbuster"
+        ? "bothTanks"
+        : first.target;
     result.push({
       ...first,
       id: `${first.id}-window`,
       name: first.type === "auto" ? "平 A" : first.name,
       duration: Math.max(first.type === "auto" ? 3 : 1.5, Math.round((last.time - first.time + (first.type === "auto" ? 3 : 1.2)) * 10) / 10),
       damage: first.type === "auto" ? averageDamage || maxDamage || undefined : maxDamage || undefined,
+      type: mergedType,
+      target: mergedTarget,
       severity: group.some((item) => item.severity === "lethal") ? "lethal" : group.some((item) => item.severity === "high") ? "high" : first.severity,
-      notes: `${first.notes ?? ""}${first.notes ? "；" : ""}已合并 ${group.length} 次连续判定，最高 ${maxDamage.toLocaleString()}，平均 ${averageDamage.toLocaleString()}。`,
+      notes: `${first.notes ?? ""}${first.notes ? "；" : ""}已合并 ${group.length} 次连续判定，覆盖 ${targetCount || "未知"} 个目标，最高 ${maxDamage.toLocaleString()}，平均 ${averageDamage.toLocaleString()}。`,
     });
   }
 
@@ -256,6 +275,7 @@ export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; repor
     const relativeTime = Math.max(0, Math.round((base.event.timestamp - fightStartTime) / 10) / 100);
     const targetSignature = signature(targets.map((target) => target.id));
     const sourceSignature = signature(group.map((item) => item.event.sourceID));
+    const tankHitCount = targets.filter((target) => tankIds.has(target.id)).length;
 
     timelineEvents.push({
       id: `fflogs-${base.event.timestamp}-${base.abilityId}-${timelineEvents.length}`,
@@ -271,6 +291,8 @@ export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; repor
       notes: `FFLogs ability=${base.abilityId || "unknown"}，命中 ${targets.length} 人：${targets.map((target) => target.name).join("、")}`,
       targetSignature,
       sourceSignature,
+      targetCount: new Set(targets.map((target) => target.id)).size,
+      tankHitCount,
     });
   }
 
