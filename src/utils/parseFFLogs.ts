@@ -17,7 +17,6 @@ const UNKNOWN_ABILITY_PATTERN = /^unknown_[0-9a-f]+$/i;
 const HIGH_END_ZONE_PATTERN = /(阿卡狄亚|阿卡迪亚|至天之座|登天斗技场|轻量级|中量级|重量级|零式|绝境战|歼灭战|讨伐战|Arcadion|AAC|Savage|Ultimate|Extreme)/i;
 const GROUP_WINDOW_MS = 900;
 const AUTO_WINDOW_GAP_MS = 9_000;
-const SHORT_MULTI_HIT_MAX_IDLE = 1.6;
 const AUTO_TIMELINE_WINDOW_GAP = 9;
 
 function asArray(value: unknown): unknown[] {
@@ -110,6 +109,14 @@ type ParsedTimelineEvent = TimelineEvent & {
   tankHitCount?: number;
 };
 
+interface FFLogsDamageDetail {
+  event: FFLogsEvent;
+  abilityId: number;
+  abilityName: string;
+  damage: number;
+  target: FFLogsActor;
+}
+
 function compactRepeatedTimelineEvents(events: ParsedTimelineEvent[]): TimelineEvent[] {
   const sorted = [...events].sort((a, b) => a.time - b.time);
   const result: TimelineEvent[] = [];
@@ -117,7 +124,12 @@ function compactRepeatedTimelineEvents(events: ParsedTimelineEvent[]): TimelineE
 
   for (const event of sorted) {
     if (used.has(event.id)) continue;
-    const gapLimit = event.type === "auto" ? AUTO_TIMELINE_WINDOW_GAP : SHORT_MULTI_HIT_MAX_IDLE;
+    if (event.type !== "auto") {
+      result.push(event);
+      used.add(event.id);
+      continue;
+    }
+    const gapLimit = AUTO_TIMELINE_WINDOW_GAP;
     const group = [event];
     used.add(event.id);
 
@@ -127,9 +139,7 @@ function compactRepeatedTimelineEvents(events: ParsedTimelineEvent[]): TimelineE
       if (candidate.time < previous.time) continue;
       if (candidate.time - previous.time > gapLimit) continue;
       if (candidate.name !== event.name) continue;
-      if (event.type === "auto" && candidate.type !== event.type) continue;
-      if (event.type !== "auto" && !compatibleSignature(candidate.sourceSignature, event.sourceSignature)) continue;
-      if (event.type !== "auto" && !compatibleSignature(candidate.targetSignature, event.targetSignature)) continue;
+      if (candidate.type !== event.type) continue;
       group.push(candidate);
       used.add(candidate.id);
     }
@@ -181,17 +191,60 @@ function signature(values: Array<string | number | undefined>) {
   return [...new Set(values.filter((value) => value !== undefined).map(String))].sort().join(".");
 }
 
-function compatibleSignature(left = "", right = "") {
-  if (left === right) return true;
-  const leftSet = new Set(left.split(".").filter(Boolean));
-  const rightSet = new Set(right.split(".").filter(Boolean));
-  if (!leftSet.size || !rightSet.size) return false;
-  const small = leftSet.size <= rightSet.size ? leftSet : rightSet;
-  const large = leftSet.size <= rightSet.size ? rightSet : leftSet;
-  for (const item of small) {
-    if (!large.has(item)) return false;
+function detailAbilityKey(detail: FFLogsDamageDetail) {
+  return detail.abilityId ? `id:${detail.abilityId}` : `name:${detail.abilityName}`;
+}
+
+function buildFFLogsAbilityProfiles(details: FFLogsDamageDetail[], tankIds: Set<number>) {
+  const used = new Set<number>();
+  const profiles = new Map<string, { maxTargets: number; maxDamage: number; maxTankHits: number }>();
+
+  for (let index = 0; index < details.length; index += 1) {
+    if (used.has(index)) continue;
+    const base = details[index];
+    const group = [base];
+    used.add(index);
+    for (let next = index + 1; next < details.length; next += 1) {
+      if (used.has(next)) continue;
+      const candidate = details[next];
+      if (candidate.event.timestamp - base.event.timestamp > GROUP_WINDOW_MS) break;
+      if (candidate.abilityId === base.abilityId || candidate.abilityName === base.abilityName) {
+        group.push(candidate);
+        used.add(next);
+      }
+    }
+
+    const uniqueTargetIds = new Set(group.map((item) => item.target.id));
+    const tankHitCount = group.filter((item) => tankIds.has(item.target.id)).length;
+    const maxDamage = Math.max(...group.map((item) => item.damage), 0);
+    const key = detailAbilityKey(base);
+    const current = profiles.get(key) ?? { maxTargets: 0, maxDamage: 0, maxTankHits: 0 };
+    profiles.set(key, {
+      maxTargets: Math.max(current.maxTargets, uniqueTargetIds.size),
+      maxDamage: Math.max(current.maxDamage, maxDamage),
+      maxTankHits: Math.max(current.maxTankHits, tankHitCount),
+    });
   }
-  return true;
+
+  return profiles;
+}
+
+function classifyWithProfile(
+  localClassification: { type: TimelineEventType; target: TimelineTarget; severity: TimelineEvent["severity"] },
+  profile: { maxTargets: number; maxDamage: number; maxTankHits: number } | undefined,
+  abilityName: string,
+  damage: number,
+): { type: TimelineEventType; target: TimelineTarget; severity: TimelineEvent["severity"] } {
+  if (!profile || AUTO_ATTACK_PATTERN.test(abilityName)) return localClassification;
+  const severity = Math.max(damage, profile.maxDamage) >= 140000
+    ? "lethal"
+    : Math.max(damage, profile.maxDamage) >= 90000
+      ? "high"
+      : "medium";
+  if (profile.maxTargets >= 5) return { type: "aoe" as const, target: "party" as const, severity };
+  if (profile.maxTankHits >= 2 && profile.maxTargets <= 2) return { type: "spreadTankbuster" as const, target: "bothTanks" as const, severity };
+  if (profile.maxTargets >= 2) return { type: "spreadTankbuster" as const, target: "bothTanks" as const, severity };
+  return localClassification;
 }
 
 export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; report: ParseReport } {
@@ -202,13 +255,7 @@ export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; repor
   const tankIds = new Set(tankActors.map((actor) => actor.id));
   const skippedRows: ParseReport["skippedRows"] = [];
 
-  const detailMap = new Map<string, {
-    event: FFLogsEvent;
-    abilityId: number;
-    abilityName: string;
-    damage: number;
-    target: FFLogsActor;
-  }>();
+  const detailMap = new Map<string, FFLogsDamageDetail>();
 
   input.events
     .filter((event) => event.type === "damage" || event.type === "calculateddamage")
@@ -251,6 +298,7 @@ export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; repor
   const timelineEvents: ParsedTimelineEvent[] = [];
   const used = new Set<number>();
   const fightStartTime = input.fightStartTime ?? details[0]?.event.timestamp ?? 0;
+  const abilityProfiles = buildFFLogsAbilityProfiles(details, tankIds);
 
   for (let index = 0; index < details.length; index += 1) {
     if (used.has(index)) continue;
@@ -271,7 +319,8 @@ export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; repor
     const targets = group.map((item) => item.target).filter((actor): actor is FFLogsActor => Boolean(actor));
     const maxDamage = Math.max(...group.map((item) => item.damage), 0);
     const ability = abilityMap.get(base.abilityId);
-    const classification = classifyEvent(targets, tankIds, base.abilityName, maxDamage);
+    const localClassification = classifyEvent(targets, tankIds, base.abilityName, maxDamage);
+    const classification = classifyWithProfile(localClassification, abilityProfiles.get(detailAbilityKey(base)), base.abilityName, maxDamage);
     const relativeTime = Math.max(0, Math.round((base.event.timestamp - fightStartTime) / 10) / 100);
     const targetSignature = signature(targets.map((target) => target.id));
     const sourceSignature = signature(group.map((item) => item.event.sourceID));

@@ -17,14 +17,16 @@ export interface PlannerInput {
   settings: PlannerSettings;
 }
 
-function canCover(start: number, duration: number, event: TimelineEvent) {
-  return start <= event.time && start + duration >= event.time;
+function canCover(start: number, duration: number, event: TimelineEvent, settings: PlannerSettings) {
+  const safetyBuffer = Math.max(0, settings.mitigationSafetyBuffer ?? 2);
+  return start <= Math.max(0, event.time - safetyBuffer) && start + duration >= event.time;
 }
 
-function nextStartFor(event: TimelineEvent, duration: number) {
+function nextStartFor(event: TimelineEvent, duration: number, settings: PlannerSettings) {
+  const safetyBuffer = Math.max(0, settings.mitigationSafetyBuffer ?? 2);
   const castLead = event.duration ? Math.min(8, Math.max(3, Math.floor(event.duration / 2))) : 0;
   const activationLead = isTankbusterEvent(event) || event.type === "aoe" ? 4 : 2;
-  const lead = Math.min(duration - 1, Math.max(castLead, activationLead));
+  const lead = Math.min(duration - 1, Math.max(castLead, activationLead) + safetyBuffer);
   return Math.max(0, event.time - lead);
 }
 
@@ -91,15 +93,15 @@ export function planMitigations(input: PlannerInput): PlannerResult {
           if (!forceSingleTankTools && skill.category === "personal" && event.target !== "bothTanks" && role !== requiredRole) return false;
           if (!forceSingleTankTools && skill.category === "target" && event.target !== "bothTanks" && !skill.canTargetPartner && role !== requiredRole) return false;
           if (skill.category === "party" && event.target === "party" && event.time - lastPartyMit < settings.partyMitigationSpacing) return false;
-          const start = nextStartFor(event, skill.duration);
+          const start = nextStartFor(event, skill.duration, settings);
           const last = lastUse.get(`${role}:${skill.id}`);
           return last === undefined || start - last >= skill.cooldown;
         })
         .map((candidate) => {
-          const start = nextStartFor(event, candidate.skill.duration);
+          const start = nextStartFor(event, candidate.skill.duration, settings);
           return { ...candidate, start, score: scoreSkillForEvent(candidate.skill, event, start, settings) };
         })
-        .filter(({ skill, start }) => canCover(start, skill.duration, event))
+        .filter(({ skill, start }) => canCover(start, skill.duration, event, settings))
         .sort((a, b) => b.score - a.score);
 
     if (event.target === "bothTanks") {
@@ -224,7 +226,7 @@ export function planMitigations(input: PlannerInput): PlannerResult {
       highRiskCount: events.filter((event) => event.severity === "high" || event.severity === "lethal").length,
       notes: [
         zh ? "当前为本地规则算法，优先检查 CD、覆盖、目标、伤害类型与等级。" : "This is a local rules-based planner that checks cooldowns, coverage, targets, damage type, and level.",
-        zh ? "减伤会尽量提前开启，默认给读条和服务器结算留出数秒缓冲。" : "Mitigation is scheduled slightly early to leave room for cast timing and server resolution.",
+        zh ? `减伤会尽量提前开启，当前额外预留 ${settings.mitigationSafetyBuffer ?? 2} 秒判定缓冲。` : `Mitigation is scheduled early with an extra ${settings.mitigationSafetyBuffer ?? 2}s safety buffer.`,
         zh ? "死刑会避免过度堆叠同类硬减，优先组合大减、短 CD、支援减或无敌。" : "Tank busters try to avoid overstacking the same hard mitigation group and prefer mixed layers.",
         zh ? "平 A 会合并成压力窗口，避免每条平 A 都消耗大减伤。" : "Autos are merged into pressure windows to avoid spending large cooldowns on every auto.",
       ],

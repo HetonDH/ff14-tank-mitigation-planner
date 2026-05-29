@@ -42,6 +42,13 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
     return "border-red-400/70 bg-red-500/20 text-red-50 hover:bg-red-500/30";
   }
 
+  function judgmentLineClass(event: TimelineEvent) {
+    if (event.type === "mechanic") return "border-sky-200 text-sky-200";
+    if (event.type === "auto") return "border-slate-100 text-slate-100";
+    if (event.target === "party" || event.type === "aoe") return "border-yellow-100 text-yellow-100";
+    return "border-red-200 text-red-200";
+  }
+
   const eventLaneEnds: number[] = [];
   const eventBlocks = [...events]
     .sort((a, b) => a.time - b.time)
@@ -132,21 +139,28 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
           <div className="absolute left-3 text-xs text-emerald-200" style={{ top: stLaneTop - 26 }}>ST {zh ? "减伤轴" : "mitigation"}</div>
 
           {eventBlocks.map(({ event, left, top, width: eventWidth }) => (
-            <button
-              key={event.id}
-              className={`absolute overflow-hidden rounded-md border px-2 py-1 text-left text-[11px] leading-tight ${eventClass(event)}`}
-              style={{ left, top, width: eventWidth, height: eventHeight }}
-              onClick={() => onSelectEvent(event)}
-              title={`${event.name} · ${timelineTargetLabels[event.target]} · ${eventTypeLabels[event.type]} · ${formatTime(event.time)}${event.duration ? `-${formatTime(event.time + event.duration)}` : ""}${event.damage ? ` · ${Math.round(event.damage).toLocaleString()} ${zh ? "伤害" : "damage"}` : ""}${event.notes ? `\n${event.notes}` : ""}`}
-            >
-              <div className="truncate font-semibold">{event.name}</div>
-              <div className="truncate">{timelineTargetLabels[event.target]} · {eventTypeLabels[event.type]}</div>
-              <div className="truncate">
-                {formatTime(event.time)}
-                {event.duration ? `-${formatTime(event.time + event.duration)}` : ""}
+            <div key={event.id}>
+              <div
+                className={`pointer-events-none absolute z-20 border-l-2 ${judgmentLineClass(event)}`}
+                style={{ left, top: Math.max(0, top - 16), height: eventHeight + 20 }}
+              >
+                <div className="absolute -left-[4px] top-0 h-2 w-2 rounded-full bg-current" />
               </div>
-              <div className="truncate">{event.damage ? `${Math.round(event.damage).toLocaleString()} ${zh ? "伤害" : "damage"}` : ""}</div>
-            </button>
+              <button
+                className={`absolute z-10 overflow-hidden rounded-md border px-2 py-1 text-left text-[11px] leading-tight ${eventClass(event)}`}
+                style={{ left, top, width: eventWidth, height: eventHeight }}
+                onClick={() => onSelectEvent(event)}
+                title={`${event.name} · ${timelineTargetLabels[event.target]} · ${eventTypeLabels[event.type]} · ${formatTime(event.time)}${event.duration ? `-${formatTime(event.time + event.duration)}` : ""}${event.damage ? ` · ${Math.round(event.damage).toLocaleString()} ${zh ? "伤害" : "damage"}` : ""}${event.notes ? `\n${event.notes}` : ""}`}
+              >
+                <div className="truncate font-semibold">{event.name}</div>
+                <div className="truncate">{timelineTargetLabels[event.target]} · {eventTypeLabels[event.type]}</div>
+                <div className="truncate">
+                  {formatTime(event.time)}
+                  {event.duration ? `-${formatTime(event.time + event.duration)}` : ""}
+                </div>
+                <div className="truncate">{event.damage ? `${Math.round(event.damage).toLocaleString()} ${zh ? "伤害" : "damage"}` : ""}</div>
+              </button>
+            </div>
           ))}
 
           {assignmentBlocks.map(({ assignment, left, top, width: assignmentWidth }) => (

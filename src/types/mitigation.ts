@@ -34,6 +34,7 @@ export interface PlannerSettings {
   burstWindowRadius: number;
   partyMitigationSpacing: number;
   dutyLevel: number;
+  mitigationSafetyBuffer: number;
   language?: "zh" | "en";
 }
 

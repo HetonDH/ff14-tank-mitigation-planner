@@ -27,6 +27,7 @@ const initialSettings: PlannerSettings = {
   burstWindowRadius: 8,
   partyMitigationSpacing: 15,
   dutyLevel: 100,
+  mitigationSafetyBuffer: 2,
 };
 
 function App() {

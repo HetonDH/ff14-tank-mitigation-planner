@@ -84,7 +84,7 @@ export function SettingsPanel(props: Props) {
         </div>
         </div>
 
-        <div className="grid grid-cols-[1.2fr_140px_1fr] gap-3 rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+        <div className="grid grid-cols-[1.2fr_130px_130px_1fr] gap-3 rounded-lg border border-slate-800 bg-slate-950/50 p-3">
         <div className="rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-300">
           <div className="font-semibold text-slate-100">{zh ? "爆发窗口" : "Burst windows"}</div>
           <div className="mt-1 text-slate-400">{zh ? "默认避让 60 秒小爆发、120 秒大爆发/团辅循环" : "Avoids 60s minor bursts and 120s raid buff windows by default"}</div>
@@ -92,6 +92,10 @@ export function SettingsPanel(props: Props) {
         <label className="text-xs text-slate-400">
           {zh ? "避让半径" : "Avoid radius"}
           <input className="field mt-1 w-full" type="number" min={0} value={settings.burstWindowRadius} onChange={(event) => props.onSettingsChange({ ...settings, burstWindowRadius: Number(event.target.value) })} />
+        </label>
+        <label className="text-xs text-slate-400">
+          {zh ? "判定提前" : "Safety lead"}
+          <input className="field mt-1 w-full" type="number" min={0} max={5} step={0.5} value={settings.mitigationSafetyBuffer} onChange={(event) => props.onSettingsChange({ ...settings, mitigationSafetyBuffer: Number(event.target.value) })} />
         </label>
         <div className="grid grid-cols-2 gap-2 text-sm">
           <label className="flex items-center gap-2 rounded-md border border-slate-700 px-3 py-2"><input type="checkbox" checked={settings.allowInvuln} onChange={(event) => props.onSettingsChange({ ...settings, allowInvuln: event.target.checked })} />{zh ? "允许无敌" : "Allow invuln"}</label>
