@@ -1,6 +1,7 @@
 import type { PlannerSettings, PlayerRole, TankJob } from "../types/mitigation";
 import { jobNames, jobNamesEn } from "../data/tankJobs";
 import type { UiLanguage } from "../types/ui";
+import { jobIconUrls } from "../utils/icons";
 
 interface Props {
   playerRole: PlayerRole;
@@ -32,7 +33,7 @@ function HelpTip({ text }: { text: string }) {
 
 function ToggleRow({ checked, onChange, label, help }: { checked: boolean; onChange: (checked: boolean) => void; label: string; help: string }) {
   return (
-    <label className="flex min-h-10 items-center gap-2 rounded-md border border-slate-800 bg-slate-950/60 px-2.5 py-2 text-xs text-slate-300">
+    <label className="flex min-h-11 items-center gap-2 rounded-md border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">
       <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <HelpTip text={help} />
@@ -45,8 +46,8 @@ export function SettingsPanel(props: Props) {
   const zh = props.language === "zh";
   const jobLabel = zh ? jobNames : jobNamesEn;
   return (
-    <section className="tool-panel p-2.5">
-      <div className="grid grid-cols-[420px_minmax(430px,1fr)] gap-2">
+    <section className="tool-panel p-3">
+      <div className="grid grid-cols-[520px_minmax(430px,1fr)] gap-2.5">
         <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-2">
           <div className="mb-1.5 flex items-center justify-between text-xs">
             <span className="font-semibold text-slate-200">{zh ? "双 T 设置" : "Tank setup"}</span>
@@ -56,19 +57,22 @@ export function SettingsPanel(props: Props) {
             const isMt = role === "MT";
             const job = isMt ? props.mtJob : props.stJob;
             return (
-              <div key={role} className="mb-1.5 last:mb-0 grid grid-cols-[42px_150px_64px_118px] items-center gap-2">
+              <div key={role} className="mb-2 last:mb-0 grid grid-cols-[46px_34px_176px_72px_132px] items-center gap-2">
                 <button
                   type="button"
                   onClick={() => props.onRoleChange(role)}
-                  className={`h-10 rounded-md border text-xs font-bold ${props.playerRole === role ? "border-cyan-300 bg-cyan-400/15 text-cyan-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}
+                  className={`h-11 rounded-md border text-sm font-bold ${props.playerRole === role ? "border-cyan-300 bg-cyan-400/15 text-cyan-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}
                 >
                   {role}
                 </button>
-                <select className="field h-10 w-full px-2.5 py-2 text-xs" value={job} onChange={(event) => isMt ? props.onMtJobChange(event.target.value as TankJob) : props.onStJobChange(event.target.value as TankJob)}>
+                <div className="flex h-11 items-center justify-center rounded-md border border-slate-700 bg-slate-950">
+                  <img className="h-7 w-7 object-contain" src={jobIconUrls[job]} alt="" />
+                </div>
+                <select className="field h-11 w-full px-3 py-2 text-sm" value={job} onChange={(event) => isMt ? props.onMtJobChange(event.target.value as TankJob) : props.onStJobChange(event.target.value as TankJob)}>
                   {jobs.map((item) => <option key={item} value={item}>{jobLabel[item]}</option>)}
                 </select>
-                <input className="field h-10 w-full px-2.5 py-2 text-xs" title={zh ? "等级" : "Level"} type="number" min={1} max={100} value={isMt ? props.mtLevel : props.stLevel} disabled={!isMt && props.syncLevels} onChange={(event) => isMt ? props.onMtLevelChange(Number(event.target.value)) : props.onStLevelChange(Number(event.target.value))} />
-                <input className="field h-10 w-full px-2.5 py-2 text-xs" title={zh ? "血量" : "HP"} type="number" min={1} value={isMt ? props.mtHp : props.stHp} onChange={(event) => isMt ? props.onMtHpChange(Number(event.target.value)) : props.onStHpChange(Number(event.target.value))} />
+                <input className="field h-11 w-full px-3 py-2 text-sm" title={zh ? "等级" : "Level"} type="number" min={1} max={100} value={isMt ? props.mtLevel : props.stLevel} disabled={!isMt && props.syncLevels} onChange={(event) => isMt ? props.onMtLevelChange(Number(event.target.value)) : props.onStLevelChange(Number(event.target.value))} />
+                <input className="field h-11 w-full px-3 py-2 text-sm" title={zh ? "血量" : "HP"} type="number" min={1} value={isMt ? props.mtHp : props.stHp} onChange={(event) => isMt ? props.onMtHpChange(Number(event.target.value)) : props.onStHpChange(Number(event.target.value))} />
               </div>
             );
           })}
