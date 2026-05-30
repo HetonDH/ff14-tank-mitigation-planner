@@ -3,7 +3,7 @@ import type { MitigationAssignment, PlannerResult, PlannerSettings, PlannerWarni
 import type { TimelineEvent } from "../types/timeline";
 import { formatTime, inAnyWindow } from "../utils/time";
 import { isTankbusterEvent, mitigationStackGroup, scoreSkillForEvent, skillMatchesEvent } from "./scoring";
-import { eventPriority, sampleInformedSkillBonus, shouldAllowHardMitStack } from "./tankMitigationPolicy";
+import { eventPriority, sampleInformedSkillBonus, shouldAllowHardMitStack, shouldReserveLongCooldown } from "./tankMitigationPolicy";
 
 export interface PlannerInput {
   events: TimelineEvent[];
@@ -118,7 +118,14 @@ export function planMitigations(input: PlannerInput): PlannerResult {
         .map((candidate) => {
           const start = nextStartFor(event, candidate.skill.duration, settings);
           const partnerJob = candidate.role === "MT" ? input.offTankJob : input.mainTankJob;
-          return { ...candidate, start, score: scoreSkillForEvent(candidate.skill, event, start, settings) + sampleInformedSkillBonus(candidate.skill, event, 0, candidate.job, partnerJob) };
+          const reservePenalty = shouldReserveLongCooldown(candidate.skill, event, start, candidateEvents) ? 80 : 0;
+          return {
+            ...candidate,
+            start,
+            score: scoreSkillForEvent(candidate.skill, event, start, settings)
+              + sampleInformedSkillBonus(candidate.skill, event, 0, candidate.job, partnerJob)
+              - reservePenalty,
+          };
         })
         .filter(({ skill, start }) => canCover(start, skill.duration, event, settings))
         .sort((a, b) => b.score - a.score);

@@ -1,7 +1,7 @@
 import type { MitigationSkill } from "../types/mitigation";
 import type { TankJob } from "../types/mitigation";
 import type { TimelineEvent } from "../types/timeline";
-import { isTankbusterEvent, mitigationStackGroup } from "./scoring";
+import { isTankbusterEvent, mitigationStackGroup, skillMatchesEvent } from "./scoring";
 
 export function eventPriority(event: TimelineEvent) {
   if (event.type === "mechanic" || event.type === "roleMechanic" || event.target === "nonTank") return 0;
@@ -16,30 +16,50 @@ export function eventPriority(event: TimelineEvent) {
 
 const FREQUENT_SAMPLE_SKILL_BONUS: Record<string, number> = {
   "common-reprisal": 30,
+  "common-rampart": 8,
+  "pld-bulwark": 12,
+  "pld-guardian": 20,
   "pld-sheltron": 34,
+  "pld-divine-veil": 22,
+  "pld-passage-of-arms": 18,
+  "war-damnation": 20,
+  "war-thrill-of-battle": 8,
   "drk-the-blackest-night": 36,
   "drk-oblation": 28,
+  "drk-dark-missionary": 24,
+  "drk-dark-mind": 16,
+  "drk-shadowed-vigil": 20,
   "gnb-heart-of-corundum": 34,
   "gnb-aurora": 18,
+  "gnb-heart-of-light": 22,
+  "gnb-camouflage": 10,
+  "gnb-great-nebula": 18,
   "pld-intervention": 22,
   "war-nascent-flash": 24,
   "war-bloodwhetting": 28,
+  "war-shake-it-off": 20,
 };
 
 const PAIR_SUPPORT_BONUS: Partial<Record<TankJob, Partial<Record<TankJob, Record<string, number>>>>> = {
   DRK: {
     PLD: { "drk-the-blackest-night": 18, "drk-oblation": 14, "pld-sheltron": 12, "pld-intervention": 10 },
+    GNB: { "drk-the-blackest-night": 16, "drk-oblation": 12, "gnb-heart-of-corundum": 16, "gnb-aurora": 8 },
+    WAR: { "drk-the-blackest-night": 14, "drk-oblation": 10, "war-bloodwhetting": 12, "war-nascent-flash": 14 },
   },
   PLD: {
     DRK: { "pld-sheltron": 14, "pld-intervention": 12, "drk-the-blackest-night": 18, "drk-oblation": 14 },
     GNB: { "pld-sheltron": 10, "gnb-heart-of-corundum": 18, "gnb-aurora": 8 },
+    WAR: { "pld-sheltron": 12, "pld-intervention": 16, "war-bloodwhetting": 12, "war-nascent-flash": 14, "war-shake-it-off": 8 },
   },
   WAR: {
     GNB: { "war-bloodwhetting": 14, "war-nascent-flash": 16, "gnb-heart-of-corundum": 16, "gnb-aurora": 8 },
+    PLD: { "war-bloodwhetting": 12, "war-nascent-flash": 14, "pld-sheltron": 12, "pld-intervention": 16 },
+    DRK: { "war-bloodwhetting": 12, "war-nascent-flash": 14, "drk-the-blackest-night": 14, "drk-oblation": 10 },
   },
   GNB: {
     WAR: { "gnb-heart-of-corundum": 16, "gnb-aurora": 8, "war-bloodwhetting": 14, "war-nascent-flash": 16 },
     PLD: { "gnb-heart-of-corundum": 18, "gnb-aurora": 8, "pld-sheltron": 10, "pld-intervention": 10 },
+    DRK: { "gnb-heart-of-corundum": 16, "gnb-aurora": 8, "drk-the-blackest-night": 16, "drk-oblation": 12 },
   },
 };
 
@@ -58,6 +78,7 @@ export function sampleInformedSkillBonus(skill: MitigationSkill, event: Timeline
   if (event.type === "aoe" || event.target === "party") {
     if (skill.category === "party") bonus += 66;
     if (skill.id === "common-reprisal") bonus += 58;
+    if (skill.damageType === "magical" && event.damageType === "magical") bonus += 18;
     if (skill.category === "personal" || skill.category === "target") bonus -= 20;
     if (skill.isInvuln) bonus -= 300;
   }
@@ -69,6 +90,7 @@ export function sampleInformedSkillBonus(skill: MitigationSkill, event: Timeline
   }
 
   if (skill.id === "common-rampart" && event.severity !== "lethal") bonus -= 18;
+  if (skill.id === "common-rampart" && layerIndex > 0 && isTankbusterEvent(event)) bonus += 18;
   if (skill.cooldown >= 180 && event.severity !== "lethal") bonus -= 140;
   if (skill.cooldown >= 90 && event.severity === "medium" && !isTankbusterEvent(event)) bonus -= 45;
   return bonus;
@@ -76,4 +98,18 @@ export function sampleInformedSkillBonus(skill: MitigationSkill, event: Timeline
 
 export function shouldAllowHardMitStack(event: TimelineEvent) {
   return event.severity === "lethal" || event.type === "spreadTankbuster" || event.type === "sharedTankbuster";
+}
+
+export function shouldReserveLongCooldown(skill: MitigationSkill, current: TimelineEvent, start: number, futureEvents: TimelineEvent[]) {
+  if (skill.cooldown < 90 || skill.category === "target" || skill.category === "party") return false;
+  if (current.severity === "lethal") return false;
+
+  const currentPriority = eventPriority(current);
+  return futureEvents.some((event) => {
+    if (event.id === current.id || event.time <= current.time) return false;
+    if (event.time - start > skill.cooldown) return false;
+    if (event.type === "mechanic" || event.type === "roleMechanic" || event.target === "nonTank") return false;
+    if (!skillMatchesEvent(skill, event)) return false;
+    return eventPriority(event) >= currentPriority + 25 || event.severity === "lethal";
+  });
 }
