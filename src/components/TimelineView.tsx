@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Lock, Unlock } from "lucide-react";
 import type { MitigationAssignment, MitigationSkill, PlayerRole } from "../types/mitigation";
 import type { TimelineEvent } from "../types/timeline";
 import type { UiLanguage } from "../types/ui";
@@ -18,6 +19,7 @@ interface Props {
   onDeleteEvent: (eventId: string) => void;
   onDeleteManual: (assignmentId: string) => void;
   isLocked: boolean;
+  onLockToggle: () => void;
   viewMode: "all" | "tanks";
   onViewModeChange: (mode: "all" | "tanks") => void;
   activeRole: PlayerRole;
@@ -25,7 +27,7 @@ interface Props {
   draggingSkillId?: string | null;
 }
 
-export function TimelineView({ language, events, assignments, maxTime, onSelectEvent, onDropSkill, onMoveAssignment, onDeleteEvent, onDeleteManual, isLocked, viewMode, onViewModeChange, activeRole, draggingSkillId }: Props) {
+export function TimelineView({ language, events, assignments, maxTime, onSelectEvent, onDropSkill, onMoveAssignment, onDeleteEvent, onDeleteManual, isLocked, onLockToggle, viewMode, onViewModeChange, activeRole, draggingSkillId }: Props) {
   const zh = language === "zh";
   const { assignmentTargetLabels, eventTypeLabels, timelineTargetLabels } = labelsFor(language);
   const [pixelsPerSecond, setPixelsPerSecond] = useState(10);
@@ -135,7 +137,14 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
           <button className={`rounded px-2 py-1 ${viewMode === "all" ? "bg-cyan-500 text-cyan-950" : "text-slate-400"}`} onClick={() => onViewModeChange("all")}>{zh ? "全部伤害" : "All"}</button>
           <button className={`rounded px-2 py-1 ${viewMode === "tanks" ? "bg-cyan-500 text-cyan-950" : "text-slate-400"}`} onClick={() => onViewModeChange("tanks")}>{zh ? "双 T 伤害" : "Tanks"}</button>
         </div>
-        <span className={`rounded px-2 py-1 text-xs ${isLocked ? "bg-amber-500/20 text-amber-200" : "bg-emerald-500/15 text-emerald-200"}`}>{isLocked ? (zh ? "锁定" : "Locked") : (zh ? "可编辑" : "Editable")}</span>
+        <button
+          className={`inline-flex h-8 w-8 items-center justify-center rounded-md border text-xs transition ${isLocked ? "border-amber-400/60 bg-amber-500/15 text-amber-200" : "border-emerald-400/50 bg-emerald-500/10 text-emerald-200"}`}
+          onClick={onLockToggle}
+          type="button"
+          title={isLocked ? (zh ? "时间轴已锁定，点击解锁" : "Timeline is locked. Click to unlock.") : (zh ? "时间轴可编辑，点击锁定" : "Timeline is editable. Click to lock.")}
+        >
+          {isLocked ? <Lock size={15} /> : <Unlock size={15} />}
+        </button>
         <label className="flex items-center gap-1 text-xs text-slate-400"><input type="checkbox" checked={showDamage} onChange={(event) => setShowDamage(event.target.checked)} />{zh ? "伤害" : "Damage"}</label>
         <label className="flex items-center gap-1 text-xs text-slate-400"><input type="checkbox" checked={showTargetLabel} onChange={(event) => setShowTargetLabel(event.target.checked)} />{zh ? "目标" : "Targets"}</label>
         <label className="flex items-center gap-1 text-xs text-slate-400"><input type="checkbox" checked={showDamageType} onChange={(event) => setShowDamageType(event.target.checked)} />{zh ? "属性" : "Type"}</label>

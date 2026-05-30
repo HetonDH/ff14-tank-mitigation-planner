@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { BookOpen, Download, Eraser, Lock, Sparkles, Unlock, Upload } from "lucide-react";
+import { BookOpen, Download, Eraser, Sparkles, Upload } from "lucide-react";
 import { AppShell } from "./components/AppShell";
 import { EventList } from "./components/EventList";
 import { EventInspector } from "./components/EventInspector";
@@ -288,7 +288,6 @@ function App() {
         <>
           <button className="btn" onClick={() => setShowTutorial(true)}><BookOpen size={16} />{language === "zh" ? "新手教程" : "Guide"}</button>
           <button className="btn" onClick={() => setLanguage((current) => current === "zh" ? "en" : "zh")}>{language === "zh" ? "English" : "中文"}</button>
-          <button className="btn" onClick={() => setIsLocked((current) => !current)}>{isLocked ? <Lock size={16} /> : <Unlock size={16} />}{isLocked ? (language === "zh" ? "已锁定" : "Locked") : (language === "zh" ? "未锁定" : "Unlocked")}</button>
           <button className="btn btn-primary" onClick={generatePlan} disabled={!events.length || isLocked}><Sparkles size={16} />{language === "zh" ? "一键生成最佳减伤" : "Generate best plan"}</button>
           <button className="btn" onClick={() => setAutoAssignments([])}><Eraser size={16} />{language === "zh" ? "清空自动排轴" : "Clear auto plan"}</button>
           <button className="btn" onClick={() => setManualAssignments([])}><Eraser size={16} />{language === "zh" ? "清空手动排轴" : "Clear manual plan"}</button>
@@ -326,7 +325,7 @@ function App() {
       left={<SkillPalette language={language} skills={skills} activeRole={playerRole} activeJobName={(language === "zh" ? jobNames : jobNamesEn)[manualJob]} onDragSkillStart={setDraggingSkillId} onDragSkillEnd={() => setDraggingSkillId(null)} />}
       center={
         <div className="space-y-3">
-          <TimelineView language={language} events={events} assignments={assignments} maxTime={maxTime} isLocked={isLocked} viewMode={timelineViewMode} onViewModeChange={setTimelineViewMode} activeRole={playerRole} draggingSkillId={draggingSkillId} onSelectEvent={setSelectedEvent} onDropSkill={addManualSkill} onMoveAssignment={moveManualAssignment} onDeleteEvent={(id) => { if (!isLocked) setEvents((current) => current.filter((event) => event.id !== id)); }} onDeleteManual={(id) => { if (!isLocked) setManualAssignments((current) => current.filter((item) => item.id !== id)); }} skills={skills} />
+          <TimelineView language={language} events={events} assignments={assignments} maxTime={maxTime} isLocked={isLocked} onLockToggle={() => setIsLocked((current) => !current)} viewMode={timelineViewMode} onViewModeChange={setTimelineViewMode} activeRole={playerRole} draggingSkillId={draggingSkillId} onSelectEvent={setSelectedEvent} onDropSkill={addManualSkill} onMoveAssignment={moveManualAssignment} onDeleteEvent={(id) => { if (!isLocked) setEvents((current) => current.filter((event) => event.id !== id)); }} onDeleteManual={(id) => { if (!isLocked) setManualAssignments((current) => current.filter((item) => item.id !== id)); }} skills={skills} />
           <div className="grid grid-cols-2 gap-3">
             <MitigationTable language={language} assignments={assignments} />
             <WarningPanel language={language} warnings={warnings} />
