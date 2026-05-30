@@ -1,7 +1,6 @@
 import type { PlannerSettings, PlayerRole, TankJob } from "../types/mitigation";
 import { jobNames, jobNamesEn } from "../data/tankJobs";
 import type { UiLanguage } from "../types/ui";
-import { jobIconUrls } from "../utils/icons";
 
 interface Props {
   playerRole: PlayerRole;
@@ -31,21 +30,6 @@ function HelpTip({ text }: { text: string }) {
   return <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-600 text-[10px] text-slate-400" title={text}>?</span>;
 }
 
-function JobMarker({ role, job, active, onClick }: { role: PlayerRole; job: TankJob; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`relative z-10 flex h-11 w-11 items-center justify-center rounded-full border bg-slate-950 shadow-lg transition ${active ? "border-cyan-300 ring-2 ring-cyan-300/40" : "border-slate-700 hover:border-slate-500"}`}
-      title={role}
-    >
-      <span className="absolute text-[9px] font-bold text-slate-500">{job}</span>
-      <img className="h-8 w-8 object-contain" src={jobIconUrls[job]} alt="" />
-      <span className={`absolute -right-2 -top-1 rounded px-1.5 py-0.5 text-[10px] font-bold ${role === "MT" ? "bg-cyan-400 text-cyan-950" : "bg-emerald-400 text-emerald-950"}`}>{role}</span>
-    </button>
-  );
-}
-
 function ToggleRow({ checked, onChange, label, help }: { checked: boolean; onChange: (checked: boolean) => void; label: string; help: string }) {
   return (
     <label className="flex min-h-9 items-center gap-2 rounded-md border border-slate-800 bg-slate-950/60 px-2 py-1.5 text-xs text-slate-300">
@@ -62,15 +46,7 @@ export function SettingsPanel(props: Props) {
   const jobLabel = zh ? jobNames : jobNamesEn;
   return (
     <section className="tool-panel p-2.5">
-      <div className="grid grid-cols-[48px_minmax(430px,1fr)_minmax(380px,0.8fr)] gap-2">
-        <div className="relative flex items-center justify-center">
-          <div className="absolute h-px w-10 bg-gradient-to-r from-cyan-300 to-emerald-300" />
-          <div className="flex flex-col gap-2">
-            <JobMarker role="MT" job={props.mtJob} active={props.playerRole === "MT"} onClick={() => props.onRoleChange("MT")} />
-            <JobMarker role="ST" job={props.stJob} active={props.playerRole === "ST"} onClick={() => props.onRoleChange("ST")} />
-          </div>
-        </div>
-
+      <div className="grid grid-cols-[minmax(430px,1fr)_minmax(380px,0.8fr)] gap-2">
         <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-2">
           <div className="mb-1.5 flex items-center justify-between text-xs">
             <span className="font-semibold text-slate-200">{zh ? "双 T 设置" : "Tank setup"}</span>
@@ -80,19 +56,19 @@ export function SettingsPanel(props: Props) {
             const isMt = role === "MT";
             const job = isMt ? props.mtJob : props.stJob;
             return (
-              <div key={role} className="mb-1 last:mb-0 grid grid-cols-[42px_minmax(110px,1fr)_64px_96px] items-center gap-1.5">
+              <div key={role} className="mb-1 last:mb-0 grid grid-cols-[38px_minmax(106px,1fr)_58px_88px] items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => props.onRoleChange(role)}
-                  className={`h-9 rounded-md border text-xs font-bold ${props.playerRole === role ? "border-cyan-300 bg-cyan-400/15 text-cyan-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}
+                  className={`h-8 rounded-md border text-xs font-bold ${props.playerRole === role ? "border-cyan-300 bg-cyan-400/15 text-cyan-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}
                 >
                   {role}
                 </button>
-                <select className="field h-9 w-full px-2 py-1 text-xs" value={job} onChange={(event) => isMt ? props.onMtJobChange(event.target.value as TankJob) : props.onStJobChange(event.target.value as TankJob)}>
+                <select className="field h-8 w-full px-2 py-1 text-xs" value={job} onChange={(event) => isMt ? props.onMtJobChange(event.target.value as TankJob) : props.onStJobChange(event.target.value as TankJob)}>
                   {jobs.map((item) => <option key={item} value={item}>{jobLabel[item]}</option>)}
                 </select>
-                <input className="field h-9 w-full px-2 py-1 text-xs" title={zh ? "等级" : "Level"} type="number" min={1} max={100} value={isMt ? props.mtLevel : props.stLevel} disabled={!isMt && props.syncLevels} onChange={(event) => isMt ? props.onMtLevelChange(Number(event.target.value)) : props.onStLevelChange(Number(event.target.value))} />
-                <input className="field h-9 w-full px-2 py-1 text-xs" title={zh ? "血量" : "HP"} type="number" min={1} value={isMt ? props.mtHp : props.stHp} onChange={(event) => isMt ? props.onMtHpChange(Number(event.target.value)) : props.onStHpChange(Number(event.target.value))} />
+                <input className="field h-8 w-full px-2 py-1 text-xs" title={zh ? "等级" : "Level"} type="number" min={1} max={100} value={isMt ? props.mtLevel : props.stLevel} disabled={!isMt && props.syncLevels} onChange={(event) => isMt ? props.onMtLevelChange(Number(event.target.value)) : props.onStLevelChange(Number(event.target.value))} />
+                <input className="field h-8 w-full px-2 py-1 text-xs" title={zh ? "血量" : "HP"} type="number" min={1} value={isMt ? props.mtHp : props.stHp} onChange={(event) => isMt ? props.onMtHpChange(Number(event.target.value)) : props.onStHpChange(Number(event.target.value))} />
               </div>
             );
           })}

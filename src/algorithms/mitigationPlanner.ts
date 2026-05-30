@@ -68,6 +68,51 @@ function countUsesInMinute(usesByKey: Map<string, number[]>, key: string, start:
   return (usesByKey.get(key) ?? []).filter((usedAt) => usedAt >= minuteStart && usedAt < minuteStart + 60).length;
 }
 
+function autoPressureWindows(autoEvents: TimelineEvent[], zh: boolean) {
+  const windows: TimelineEvent[] = [];
+  const idsByWindow = new Map<string, string[]>();
+  const sorted = [...autoEvents].sort((a, b) => a.time - b.time);
+  let group: TimelineEvent[] = [];
+
+  const flush = () => {
+    if (!group.length) return;
+    const first = group[0];
+    const last = group[group.length - 1];
+    const id = `auto-pressure-${windows.length + 1}`;
+    const averageDamage = group.reduce((sum, event) => sum + (event.damage ?? 0), 0) / Math.max(1, group.filter((event) => event.damage).length || group.length);
+    windows.push({
+      ...first,
+      id,
+      name: zh ? `平 A 压力窗口 ${windows.length + 1}` : `Auto pressure window ${windows.length + 1}`,
+      time: first.time,
+      duration: Math.max(8, last.time - first.time + 8),
+      damage: Number.isFinite(averageDamage) ? Math.round(averageDamage) : first.damage,
+      severity: group.length >= 4 || averageDamage >= 60000 ? "medium" : "low",
+      notes: zh ? `由 ${group.length} 条平 A 合并，保留短 CD 覆盖节奏。` : `Merged from ${group.length} auto attacks to preserve short-cooldown rhythm.`,
+    });
+    idsByWindow.set(id, group.map((event) => event.id));
+    group = [];
+  };
+
+  for (const event of sorted) {
+    const previous = group[group.length - 1];
+    if (previous && event.time - previous.time > 18) flush();
+    group.push(event);
+  }
+  flush();
+  return { windows, idsByWindow };
+}
+
+function neededLayersFor(event: TimelineEvent) {
+  if (isTankbusterEvent(event)) {
+    if (event.severity === "lethal") return 3;
+    if (event.severity === "high" || event.type === "sharedTankbuster" || event.type === "spreadTankbuster") return 2;
+    return 1;
+  }
+  if (event.type === "aoe" && event.severity === "high") return 2;
+  return 1;
+}
+
 export function planMitigations(input: PlannerInput): PlannerResult {
   const { events, playerRole, settings } = input;
   const zh = settings.language !== "en";
@@ -93,11 +138,8 @@ export function planMitigations(input: PlannerInput): PlannerResult {
       message: zh ? "已关闭平 A 规划：导入的平 A 会显示在时间轴上，但不会自动消耗短 CD。" : "Auto planning is disabled. Imported autos remain visible but will not automatically spend short cooldowns.",
     });
   }
-  const autoWindows = candidateEvents.filter((event) => event.type === "auto");
-  const autoWindowIds = new Set(autoWindows.map((event) => event.id));
-  const pressureEvents = autoWindows.length
-    ? [{ ...autoWindows[0], id: "auto-pressure", name: zh ? "平 A 压力窗口" : "Auto pressure window", time: autoWindows[0].time, duration: Math.max(8, (autoWindows[autoWindows.length - 1]?.time ?? autoWindows[0].time) - autoWindows[0].time + 8), severity: "medium" as const }]
-    : [];
+  const autoWindows = autoPressureWindows(candidateEvents.filter((event) => event.type === "auto"), zh);
+  const pressureEvents = autoWindows.windows;
   const workEvents = [...candidateEvents.filter((event) => event.type !== "auto"), ...pressureEvents]
     .sort((a, b) => eventPriority(b) - eventPriority(a) || a.time - b.time);
 
@@ -146,8 +188,31 @@ export function planMitigations(input: PlannerInput): PlannerResult {
 
     if (event.target === "bothTanks") {
       for (const requiredRole of ["MT", "ST"] as PlayerRole[]) {
-        const chosen = buildValid(requiredRole, true)[0];
-        if (!chosen) {
+        const roleValid = buildValid(requiredRole, true);
+        const chosenForRole = [];
+        const usedSkillIds = new Set<string>();
+        const usedGroups = new Set<string>();
+        for (let index = 0; index < neededLayersFor(event); index += 1) {
+          const chosen = roleValid
+            .filter((candidate) => !usedSkillIds.has(candidate.skill.id))
+            .filter((candidate) => shouldAllowHardMitStack(event) || mitigationStackGroup(candidate.skill) !== "hardMit" || !usedGroups.has("hardMit"))
+            .map((candidate) => {
+              const group = mitigationStackGroup(candidate.skill);
+              return {
+                ...candidate,
+                adjustedScore: candidate.score
+                  + sampleInformedSkillBonus(candidate.skill, event, index, candidate.job, candidate.role === "MT" ? input.offTankJob : input.mainTankJob)
+                  + stackPenalty(usedSkillIds, usedGroups, candidate.skill.id, group),
+              };
+            })
+            .sort((a, b) => b.adjustedScore - a.adjustedScore)[0];
+          if (!chosen) break;
+          chosenForRole.push(chosen);
+          usedSkillIds.add(chosen.skill.id);
+          usedGroups.add(mitigationStackGroup(chosen.skill));
+        }
+
+        if (!chosenForRole.length) {
           warnings.push({
             id: `warn-uncovered-${event.id}-${requiredRole}`,
             level: highRisk ? "danger" : "warning",
@@ -157,39 +222,41 @@ export function planMitigations(input: PlannerInput): PlannerResult {
           continue;
         }
 
-        const assignment: MitigationAssignment = {
-          id: `auto-${event.id}-${requiredRole}-${chosen.skill.id}`,
-          skillId: chosen.skill.id,
-          skillName: chosen.skill.zhName,
-          casterRole: chosen.role,
-          casterJob: chosen.job,
-          target: requiredRole,
-          start: chosen.start,
-          end: chosen.start + chosen.skill.duration,
-          duration: chosen.skill.duration,
-          eventIds: [event.id],
-          source: "auto",
-        };
+        for (const chosen of chosenForRole) {
+          const assignment: MitigationAssignment = {
+            id: `auto-${event.id}-${requiredRole}-${chosen.skill.id}-${assignments.length}`,
+            skillId: chosen.skill.id,
+            skillName: chosen.skill.zhName,
+            casterRole: chosen.role,
+            casterJob: chosen.job,
+            target: requiredRole,
+            start: chosen.start,
+            end: chosen.start + chosen.skill.duration,
+            duration: chosen.skill.duration,
+            eventIds: [event.id],
+            source: "auto",
+          };
 
-        if (settings.avoidBurstWindows && inAnyWindow(chosen.start, settings.burstWindows, settings.burstWindowRadius)) {
-          assignment.warning = zh ? "落在爆发窗口附近；因覆盖或 CD 需要仍然安排。" : "Near a burst window; kept because coverage or cooldown requires it.";
-          warnings.push({
-            id: `warn-burst-${assignment.id}`,
-            level: "info",
-            assignmentId: assignment.id,
-            message: zh ? `${assignment.skillName} 安排在 ${formatTime(assignment.start)}，靠近爆发窗口。` : `${assignment.skillName} is scheduled at ${formatTime(assignment.start)}, near a burst window.`,
-          });
+          if (settings.avoidBurstWindows && inAnyWindow(chosen.start, settings.burstWindows, settings.burstWindowRadius)) {
+            assignment.warning = zh ? "落在爆发窗口附近；因覆盖或 CD 需要仍然安排。" : "Near a burst window; kept because coverage or cooldown requires it.";
+            warnings.push({
+              id: `warn-burst-${assignment.id}`,
+              level: "info",
+              assignmentId: assignment.id,
+              message: zh ? `${assignment.skillName} 安排在 ${formatTime(assignment.start)}，靠近爆发窗口。` : `${assignment.skillName} is scheduled at ${formatTime(assignment.start)}, near a burst window.`,
+            });
+          }
+
+          assignments.push(assignment);
+          pushUse(usesByKey, `${chosen.role}:${chosen.skill.id}`, chosen.start);
+          if (chosen.skill.category === "party") partyMitUses.push(event.time);
         }
-
-        assignments.push(assignment);
-        pushUse(usesByKey, `${chosen.role}:${chosen.skill.id}`, chosen.start);
-        if (chosen.skill.category === "party") partyMitUses.push(event.time);
       }
       continue;
     }
 
     const valid = buildValid(desiredRole, false);
-    const neededLayers = isTankbusterEvent(event) ? (event.severity === "lethal" ? 3 : 2) : event.type === "aoe" && event.severity === "high" ? 2 : 1;
+    const neededLayers = neededLayersFor(event);
     const chosenList = [];
     const usedSkillIds = new Set<string>();
     const usedGroups = new Set<string>();
@@ -233,7 +300,7 @@ export function planMitigations(input: PlannerInput): PlannerResult {
         start: chosen.start,
         end: chosen.start + chosen.skill.duration,
         duration: chosen.skill.duration,
-        eventIds: event.id === "auto-pressure" ? [...autoWindowIds] : [event.id],
+        eventIds: autoWindows.idsByWindow.get(event.id) ?? [event.id],
         source: "auto",
       };
 
