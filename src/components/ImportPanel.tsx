@@ -27,9 +27,9 @@ export function ImportPanel({ language, fflogsUrl, logFile, logText, logEncounte
   const zh = language === "zh";
   const { eventTypeLabels, severityLabels, timelineTargetLabels } = labelsFor(language);
   return (
-    <section className="tool-panel p-4">
-      <h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><Upload size={18} />{zh ? "导入战斗记录" : "Import fight log"}</h2>
-      <div className="rounded-md border border-cyan-500/20 bg-cyan-500/5 p-3">
+    <section className="tool-panel p-3">
+      <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold"><Upload size={16} />{zh ? "导入战斗记录" : "Import fight log"}</h2>
+      <div className="rounded-md border border-cyan-500/20 bg-cyan-500/5 p-2">
         <div className="mb-2 text-sm font-semibold text-cyan-100">{zh ? "FFLogs 链接导入" : "FFLogs link import"}</div>
         <input
           className="field w-full"
@@ -37,7 +37,7 @@ export function ImportPanel({ language, fflogsUrl, logFile, logText, logEncounte
           onChange={(event) => onFFLogsUrlChange(event.target.value)}
           placeholder="https://www.fflogs.com/reports/ABC123#fight=5"
         />
-        <div className="mt-2 grid grid-cols-1 gap-2">
+        <div className="mt-2 grid grid-cols-2 gap-2">
           <button className="btn w-full" onClick={onImportFFLogsUrl} disabled={isReadingLog || !fflogsUrl.trim()}>
             <Upload size={16} />{isReadingLog ? (zh ? "正在导入 FFLogs..." : "Importing FFLogs...") : (zh ? "单独导入时间轴" : "Import timeline only")}
           </button>
@@ -48,10 +48,10 @@ export function ImportPanel({ language, fflogsUrl, logFile, logText, logEncounte
         <div className="mt-2 text-xs text-slate-400">
           {zh ? "第一个按钮只生成 boss 伤害时间轴；第二个按钮会额外识别当前战斗的 MT/ST 职业和坦克减伤释放记录。" : "The first button imports boss damage only; the second also imports current MT/ST jobs and tank mitigation casts."}
         </div>
-        <div className="mt-4 border-t border-cyan-500/10 pt-3 text-sm font-semibold text-cyan-100">{zh ? "日志文件 / JSON 兜底" : "Log file / JSON fallback"}</div>
+        <div className="mt-3 border-t border-cyan-500/10 pt-2 text-xs font-semibold text-cyan-100">{zh ? "日志文件 / JSON 兜底" : "Log file / JSON fallback"}</div>
         <input className="field w-full" type="file" accept=".json,.txt,.log" onChange={(event) => onLogFileChange(event.target.files?.[0] ?? null)} />
         <textarea
-          className="field mt-2 h-24 w-full resize-none text-xs"
+          className="field mt-2 h-14 w-full resize-none text-xs"
           value={logText}
           onChange={(event) => onLogTextChange(event.target.value)}
           placeholder={zh ? "粘贴 FFLogs API JSON，或上传 .json/.txt/.log。本地日志只作为实验兜底。" : "Paste FFLogs API JSON, or upload .json/.txt/.log. Local logs are experimental fallback only."}
@@ -82,7 +82,7 @@ export function ImportPanel({ language, fflogsUrl, logFile, logText, logEncounte
           <div>{zh ? "跳过行" : "Skipped rows"}：{report.skippedRows.length ? report.skippedRows.map((row) => zh ? `${row.row} 行 ${row.reason}` : `Row ${row.row}: ${row.reason}`).join(zh ? "；" : "; ") : zh ? "无" : "None"}</div>
         </div>
       )}
-      <div className="mt-4 max-h-[520px] overflow-auto">
+      <div className="mt-3 max-h-[180px] overflow-auto">
         <h3 className="mb-2 text-sm font-semibold text-slate-300">{zh ? "事件列表" : "Events"}</h3>
         <div className="space-y-2">
           {events.map((event) => (

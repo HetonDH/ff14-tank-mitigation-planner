@@ -301,7 +301,7 @@ function parseFFLogsTankMitigations(payload: unknown, timeline: { events: Timeli
     return {
       ...event,
       target,
-      targetDamageLabel: names.length ? `对 ${names.map((name) => name === mtName ? `MT ${name}` : name === stName ? `ST ${name}` : name).join("、")} 的伤害` : event.targetDamageLabel,
+      targetDamageLabel: hitsMt && hitsSt ? "对 MT、ST 的伤害" : hitsMt ? "对 MT 的伤害" : hitsSt ? "对 ST 的伤害" : event.targetDamageLabel,
     };
   });
 

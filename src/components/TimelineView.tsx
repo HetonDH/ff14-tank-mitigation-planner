@@ -22,22 +22,26 @@ interface Props {
   onViewModeChange: (mode: "all" | "tanks") => void;
   activeRole: PlayerRole;
   skills: MitigationSkill[];
+  draggingSkillId?: string | null;
 }
 
-export function TimelineView({ language, events, assignments, maxTime, onSelectEvent, onDropSkill, onMoveAssignment, onDeleteEvent, onDeleteManual, isLocked, viewMode, onViewModeChange, activeRole }: Props) {
+export function TimelineView({ language, events, assignments, maxTime, onSelectEvent, onDropSkill, onMoveAssignment, onDeleteEvent, onDeleteManual, isLocked, viewMode, onViewModeChange, activeRole, draggingSkillId }: Props) {
   const zh = language === "zh";
   const { assignmentTargetLabels, eventTypeLabels, timelineTargetLabels } = labelsFor(language);
   const [pixelsPerSecond, setPixelsPerSecond] = useState(10);
   const [dragPreview, setDragPreview] = useState<{ skillId: string; start: number } | null>(null);
+  const [showDamage, setShowDamage] = useState(true);
+  const [showTargetLabel, setShowTargetLabel] = useState(true);
+  const [showDamageType, setShowDamageType] = useState(false);
   const visibleEvents = viewMode === "tanks" ? events.filter((event) => event.target === "MT" || event.target === "ST" || event.target === "bothTanks") : events;
   const safeMax = Math.max(maxTime, 180);
   const width = Math.max(900, safeMax * pixelsPerSecond);
   const tickStep = pixelsPerSecond >= 22 ? 1 : pixelsPerSecond >= 12 ? 5 : pixelsPerSecond >= 7 ? 10 : 30;
   const eventLaneTop = 36;
-  const eventHeight = 56;
-  const eventGap = 16;
-  const assignmentHeight = 46;
-  const assignmentGap = 7;
+  const eventHeight = 68;
+  const eventGap = 22;
+  const assignmentHeight = 58;
+  const assignmentGap = 10;
 
   function xFor(time: number) {
     return (time / safeMax) * width;
@@ -49,6 +53,7 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
     if (event.type === "singleDamage") return "border-orange-300/70 bg-orange-400/20 text-orange-50 hover:bg-orange-400/30";
     if (event.type === "auto") return "border-slate-300/60 bg-slate-300/20 text-slate-50 hover:bg-slate-300/30";
     if (event.target === "party" || event.type === "aoe") return "border-yellow-300/70 bg-yellow-400/20 text-yellow-50 hover:bg-yellow-400/30";
+    if (event.target === "nonTank") return "border-purple-300/70 bg-purple-500/20 text-purple-50 hover:bg-purple-500/30";
     if (event.target === "ST") return "border-emerald-300/70 bg-emerald-500/20 text-emerald-50 hover:bg-emerald-500/30";
     return "border-red-400/70 bg-red-500/20 text-red-50 hover:bg-red-500/30";
   }
@@ -59,7 +64,24 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
     if (event.type === "singleDamage") return "border-orange-200 text-orange-200";
     if (event.type === "auto") return "border-slate-100 text-slate-100";
     if (event.target === "party" || event.type === "aoe") return "border-yellow-100 text-yellow-100";
+    if (event.target === "ST") return "border-emerald-200 text-emerald-200";
+    if (event.target === "nonTank") return "border-purple-200 text-purple-200";
     return "border-red-200 text-red-200";
+  }
+
+  function assignmentTone(assignment: MitigationAssignment) {
+    if (assignment.warning?.includes("冲突") || assignment.warning?.toLowerCase().includes("conflict")) return "border-red-400 bg-red-500/30 text-red-50";
+    if (assignment.target === "party" || assignment.target === "bothTanks") return "border-yellow-300/60 bg-yellow-400/20 text-yellow-50";
+    if (assignment.target === "ST") return "border-emerald-300/70 bg-emerald-500/20 text-emerald-50";
+    if (assignment.target === "MT") return "border-cyan-300/70 bg-cyan-500/20 text-cyan-50";
+    if (assignment.source === "log") return "border-violet-400/50 bg-violet-500/15 text-violet-50";
+    return assignment.casterRole === "MT" ? "border-cyan-400/50 bg-cyan-500/15 text-cyan-50" : "border-emerald-400/50 bg-emerald-500/15 text-emerald-50";
+  }
+
+  function assignmentTargetText(assignment: MitigationAssignment) {
+    if (assignment.target === "self") return assignment.casterRole;
+    if (assignment.target === "partner") return assignment.casterRole === "MT" ? "ST" : "MT";
+    return assignmentTargetLabels[assignment.target];
   }
 
   const eventLaneEnds: number[] = [];
@@ -114,6 +136,9 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
           <button className={`rounded px-2 py-1 ${viewMode === "tanks" ? "bg-cyan-500 text-cyan-950" : "text-slate-400"}`} onClick={() => onViewModeChange("tanks")}>{zh ? "双 T 伤害" : "Tanks"}</button>
         </div>
         <span className={`rounded px-2 py-1 text-xs ${isLocked ? "bg-amber-500/20 text-amber-200" : "bg-emerald-500/15 text-emerald-200"}`}>{isLocked ? (zh ? "锁定" : "Locked") : (zh ? "可编辑" : "Editable")}</span>
+        <label className="flex items-center gap-1 text-xs text-slate-400"><input type="checkbox" checked={showDamage} onChange={(event) => setShowDamage(event.target.checked)} />{zh ? "伤害" : "Damage"}</label>
+        <label className="flex items-center gap-1 text-xs text-slate-400"><input type="checkbox" checked={showTargetLabel} onChange={(event) => setShowTargetLabel(event.target.checked)} />{zh ? "目标" : "Targets"}</label>
+        <label className="flex items-center gap-1 text-xs text-slate-400"><input type="checkbox" checked={showDamageType} onChange={(event) => setShowDamageType(event.target.checked)} />{zh ? "属性" : "Type"}</label>
         <label className="flex items-center gap-2 text-xs text-slate-400">
           {zh ? "时间缩放" : "Scale"}
           <input
@@ -132,7 +157,7 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
         onDragOver={(event) => {
           event.preventDefault();
           if (isLocked) return;
-          const payload = event.dataTransfer.getData("text/plain");
+          const payload = event.dataTransfer.getData("application/x-mitigation-skill") || event.dataTransfer.getData("text/plain") || draggingSkillId || "";
           if (!payload || payload.startsWith("move-assignment:")) return;
           const rect = event.currentTarget.getBoundingClientRect();
           const x = event.clientX - rect.left + event.currentTarget.scrollLeft;
@@ -143,7 +168,8 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
           event.preventDefault();
           setDragPreview(null);
           if (isLocked) return;
-          const payload = event.dataTransfer.getData("text/plain");
+          const payload = event.dataTransfer.getData("application/x-mitigation-skill") || event.dataTransfer.getData("text/plain") || draggingSkillId || "";
+          if (!payload) return;
           const rect = event.currentTarget.getBoundingClientRect();
           const x = event.clientX - rect.left + event.currentTarget.scrollLeft;
           const start = Math.max(0, Math.round((x / width) * safeMax));
@@ -192,15 +218,15 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
               >
                 <div className="truncate font-semibold">{event.name}</div>
                 <div className="truncate">{timelineTargetLabels[event.target]} · {eventTypeLabels[event.type]}</div>
-                <div className="truncate text-[10px] opacity-85">{event.targetDamageLabel ?? ""}</div>
-                <div className="truncate">{event.damage ? `${Math.round(event.damage).toLocaleString()} ${zh ? "伤害" : "damage"}` : ""}</div>
+                {showTargetLabel ? <div className="truncate text-[10px] opacity-85">{event.targetDamageLabel ?? ""}</div> : null}
+                {showDamageType ? <div className="truncate text-[10px] opacity-85">{event.damageType === "physical" ? (zh ? "物理" : "Physical") : event.damageType === "magical" ? (zh ? "魔法" : "Magical") : (zh ? "未知属性" : "Unknown")}</div> : null}
+                {showDamage ? <div className="truncate">{event.damage ? `${Math.round(event.damage).toLocaleString()} ${zh ? "伤害" : "damage"}` : ""}</div> : null}
               </button>
             </div>
           ))}
 
           {assignmentBlocks.map(({ assignment, left, top, width: assignmentWidth }) => (
             (() => {
-              const hasConflict = assignment.warning?.includes("冲突") || assignment.warning?.toLowerCase().includes("conflict") || false;
               const skill = findSkill(assignment.skillId);
               const lineTone = assignment.casterRole === "MT" ? "border-cyan-200 text-cyan-100" : "border-emerald-200 text-emerald-100";
               return (
@@ -214,7 +240,7 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
                 </div>
               </div>
             <button
-              className={`absolute rounded-md border px-2 py-1 text-left text-[11px] ${hasConflict ? "border-red-400 bg-red-500/30 text-red-50" : assignment.source === "auto" ? "border-cyan-400/50 bg-cyan-500/15 text-cyan-50" : assignment.source === "log" ? "border-violet-400/50 bg-violet-500/15 text-violet-50" : "border-emerald-400/50 bg-emerald-500/15 text-emerald-50"}`}
+              className={`absolute rounded-md border px-2 py-1 text-left text-[11px] ${assignmentTone(assignment)}`}
               style={{ left, top, width: assignmentWidth, height: assignmentHeight }}
               onDoubleClick={() => assignment.source === "manual" && onDeleteManual(assignment.id)}
               draggable={!isLocked && assignment.source === "manual"}
@@ -229,7 +255,7 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
                 {skill?.icon ? <img className="h-6 w-6 shrink-0 rounded border border-white/10" src={xivIconUrl(skill.icon)} alt="" /> : null}
                 <div className="min-w-0">
                   <div className="truncate font-semibold">{zh ? assignment.skillName : skill?.enName ?? assignment.skillName}</div>
-                  <div className="truncate text-[10px] opacity-85">{formatTime(assignment.start)} · {assignment.casterRole} → {assignmentTargetLabels[assignment.target]}</div>
+                  <div className="truncate text-[10px] opacity-85">{formatTime(assignment.start)} · {assignment.casterRole} → {assignmentTargetText(assignment)}</div>
                 </div>
               </div>
             </button>
@@ -239,7 +265,7 @@ export function TimelineView({ language, events, assignments, maxTime, onSelectE
           ))}
           {previewSkill && dragPreview ? (
             <div
-              className="pointer-events-none absolute z-30 rounded-md border border-cyan-200 bg-cyan-300/20 px-2 py-1 text-[11px] text-cyan-50 shadow-lg"
+              className="pointer-events-none absolute z-30 rounded-md border-2 border-cyan-100 bg-cyan-300/25 px-2 py-1 text-[11px] text-cyan-50 shadow-2xl ring-2 ring-cyan-300/30"
               style={{ left: xFor(dragPreview.start), top: activeRole === "MT" ? mtLaneTop : stLaneTop, width: Math.max(136, previewSkill.duration * pixelsPerSecond), height: assignmentHeight }}
             >
               <div className="font-semibold">{zh ? previewSkill.zhName : previewSkill.enName}</div>

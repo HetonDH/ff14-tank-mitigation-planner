@@ -41,6 +41,7 @@ export const timelineTargetLabelsZh: Record<TimelineTarget, string> = {
   ST: "ST",
   bothTanks: "双 T",
   party: "全体",
+  nonTank: "非 T",
   self: "自己",
 };
 
@@ -49,6 +50,7 @@ export const timelineTargetLabelsEn: Record<TimelineTarget, string> = {
   ST: "ST",
   bothTanks: "Both tanks",
   party: "Party",
+  nonTank: "Non-tank",
   self: "Self",
 };
 

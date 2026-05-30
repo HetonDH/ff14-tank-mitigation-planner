@@ -14,7 +14,7 @@ export function mitigationStackGroup(skill: MitigationSkill): MitigationStackGro
 }
 
 export function skillMatchesEvent(skill: MitigationSkill, event: TimelineEvent): boolean {
-  if (event.type === "mechanic" || event.type === "roleMechanic") return false;
+  if (event.type === "mechanic" || event.type === "roleMechanic" || event.target === "nonTank") return false;
   if (skill.damageType !== "all" && skill.damageType !== event.damageType) return false;
   if (skill.category === "party") return event.target === "party" || event.target === "bothTanks";
   if (skill.targeting === "bothTanks") return event.target === "bothTanks";

@@ -23,8 +23,8 @@ export function AppShell({ settings, left, center, right, bottom, actions, langu
         </div>
         <div className="flex flex-wrap justify-end gap-2">{actions}</div>
       </header>
-      <div className="mb-4">{settings}</div>
-      <main className="grid grid-cols-[300px_minmax(620px,1fr)_280px] gap-3">
+      <div className="mb-3">{settings}</div>
+      <main className="grid grid-cols-[260px_minmax(680px,1fr)_320px] gap-3">
         <aside>{left}</aside>
         <div>{center}</div>
         <aside className="space-y-4">{right}</aside>

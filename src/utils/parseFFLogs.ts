@@ -56,7 +56,7 @@ function damageTypeFromAbility(ability?: FFLogsAbility): DamageType {
   const type = Number(ability?.type);
   if (type === 128) return "physical";
   if (type === 1024) return "magical";
-  return "all";
+  return "magical";
 }
 
 function extractFFLogsInput(json: unknown): FFLogsImportInput {
@@ -99,8 +99,9 @@ function classifyEvent(targets: FFLogsActor[], tankIds: Set<number>, abilityName
   if (uniqueCount >= 5) return { type: "aoe", target: "party", severity: damage >= 90000 ? "high" : "medium" };
   if (tankHitCount >= 2 && uniqueCount <= 2) return { type: "spreadTankbuster", target: "bothTanks", severity: damage >= 140000 ? "lethal" : "high" };
   if (tankHitCount === 1 && uniqueCount === 1) return { type: "singleTankbuster", target: "MT", severity: damage >= 140000 ? "lethal" : "high" };
-  if (tankHitCount === 0 && uniqueCount === 1) return { type: damage >= 90000 ? "singleDamage" : "roleMechanic", target: "self", severity: damage >= 90000 ? "high" : "medium" };
-  return { type: "aoe", target: uniqueCount >= 2 ? "party" : "self", severity: damage >= 90000 ? "high" : "medium" };
+  if (tankHitCount === 0 && uniqueCount === 1) return { type: damage >= 90000 ? "singleDamage" : "roleMechanic", target: "nonTank", severity: damage >= 90000 ? "high" : "medium" };
+  if (tankHitCount === 0 && uniqueCount >= 2) return { type: "roleMechanic", target: "nonTank", severity: damage >= 90000 ? "high" : "medium" };
+  return { type: "aoe", target: uniqueCount >= 2 ? "party" : "nonTank", severity: damage >= 90000 ? "high" : "medium" };
 }
 
 type ParsedTimelineEvent = TimelineEvent & {
@@ -243,9 +244,15 @@ function classifyWithProfile(
       ? "high"
       : "medium";
   if (profile.maxTargets >= 5) return { type: "aoe" as const, target: "party" as const, severity };
-  if (profile.maxTankHits >= 2 && profile.maxTargets <= 2) return { type: "spreadTankbuster" as const, target: "bothTanks" as const, severity };
-  if (profile.maxTargets >= 2) return { type: "spreadTankbuster" as const, target: "bothTanks" as const, severity };
   return localClassification;
+}
+
+function targetLabelFor(target: TimelineTarget, tankHitCount: number) {
+  if (target === "party") return "对全体的伤害";
+  if (target === "bothTanks") return "对双 T 的伤害";
+  if (target === "MT" || target === "ST" || tankHitCount > 0) return "对 T 的伤害";
+  if (target === "nonTank") return "对非 T 的伤害";
+  return undefined;
 }
 
 export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; report: ParseReport } {
@@ -332,7 +339,7 @@ export function parseFFLogsJson(json: unknown): { events: TimelineEvent[]; repor
       time: relativeTime,
       name: base.abilityName,
       damage: maxDamage || undefined,
-      targetDamageLabel: targets.length ? `对 ${targets.map((target) => target.name).join("、")} 的伤害` : undefined,
+      targetDamageLabel: targetLabelFor(classification.target, tankHitCount),
       type: classification.type,
       damageType: damageTypeFromAbility(ability),
       target: classification.target,

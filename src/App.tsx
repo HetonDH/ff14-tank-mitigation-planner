@@ -55,6 +55,7 @@ function App() {
   const [showTutorial, setShowTutorial] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [timelineViewMode, setTimelineViewMode] = useState<"all" | "tanks">("all");
+  const [draggingSkillId, setDraggingSkillId] = useState<string | null>(null);
   const importJsonRef = useRef<HTMLInputElement>(null);
 
   const manualJob = playerRole === "MT" ? mainTankJob : offTankJob;
@@ -183,12 +184,13 @@ function App() {
     if (isLocked) return;
     const skill = findSkill(skillId);
     if (!skill) return;
+    const defaultTarget = playerRole;
     const target = skill.canTargetPartner
-      ? (window.prompt(language === "zh" ? "请选择目标：自己 / MT / ST / 全队" : "Choose target: Self / MT / ST / Party", language === "zh" ? "自己" : "Self") ?? (language === "zh" ? "自己" : "Self"))
+      ? (window.prompt(language === "zh" ? "请选择目标：MT / ST / 全队" : "Choose target: MT / ST / Party", defaultTarget) ?? defaultTarget)
       : skill.targeting === "party"
         ? (language === "zh" ? "全队" : "Party")
-        : (language === "zh" ? "自己" : "Self");
-    const normalizedTarget: AssignmentTarget = target.includes("MT") ? "MT" : target.includes("ST") ? "ST" : target.includes("全队") || target.toLowerCase().includes("party") ? "party" : "self";
+        : defaultTarget;
+    const normalizedTarget: AssignmentTarget = target.includes("MT") ? "MT" : target.includes("ST") ? "ST" : target.includes("全队") || target.toLowerCase().includes("party") ? "party" : playerRole;
     const cdConflict = manualAssignments.concat(autoAssignments).some((item) => item.skillId === skill.id && Math.abs(item.start - start) < skill.cooldown);
     const id = `manual-${skill.id}-${Date.now()}`;
     const assignment: MitigationAssignment = {
@@ -295,39 +297,42 @@ function App() {
         </>
       }
       settings={
-        <SettingsPanel
-          playerRole={playerRole}
-          mtJob={mainTankJob}
-          stJob={offTankJob}
-          mtLevel={mtLevel}
-          stLevel={stLevel}
-          mtHp={mtHp}
-          stHp={stHp}
-          syncLevels={syncLevels}
-          settings={settings}
-          language={language}
-          onRoleChange={setPlayerRole}
-          onMtJobChange={(job) => { setMainTankJob(job); setAutoAssignments([]); }}
-          onStJobChange={(job) => { setOffTankJob(job); setAutoAssignments([]); }}
-          onMtLevelChange={(level) => { setMtLevel(level); if (syncLevels) setSettings((current) => ({ ...current, dutyLevel: level })); setAutoAssignments([]); }}
-          onStLevelChange={(level) => { setStLevel(level); setAutoAssignments([]); }}
-          onMtHpChange={(hp) => { setMtHp(hp); setAutoAssignments([]); }}
-          onStHpChange={(hp) => { setStHp(hp); setAutoAssignments([]); }}
-          onSyncLevelsChange={(sync) => { setSyncLevels(sync); if (sync) { setMtLevel(settings.dutyLevel); setStLevel(settings.dutyLevel); } setAutoAssignments([]); }}
-          onSettingsChange={updateSettings}
-        />
+        <div className="grid grid-cols-[minmax(520px,1fr)_420px] gap-3">
+          <SettingsPanel
+            playerRole={playerRole}
+            mtJob={mainTankJob}
+            stJob={offTankJob}
+            mtLevel={mtLevel}
+            stLevel={stLevel}
+            mtHp={mtHp}
+            stHp={stHp}
+            syncLevels={syncLevels}
+            settings={settings}
+            language={language}
+            onRoleChange={setPlayerRole}
+            onMtJobChange={(job) => { setMainTankJob(job); setAutoAssignments([]); }}
+            onStJobChange={(job) => { setOffTankJob(job); setAutoAssignments([]); }}
+            onMtLevelChange={(level) => { setMtLevel(level); if (syncLevels) setSettings((current) => ({ ...current, dutyLevel: level })); setAutoAssignments([]); }}
+            onStLevelChange={(level) => { setStLevel(level); setAutoAssignments([]); }}
+            onMtHpChange={(hp) => { setMtHp(hp); setAutoAssignments([]); }}
+            onStHpChange={(hp) => { setStHp(hp); setAutoAssignments([]); }}
+            onSyncLevelsChange={(sync) => { setSyncLevels(sync); if (sync) { setMtLevel(settings.dutyLevel); setStLevel(settings.dutyLevel); } setAutoAssignments([]); }}
+            onSettingsChange={updateSettings}
+          />
+          <ImportPanel language={language} fflogsUrl={fflogsUrl} logFile={logFile} logText={logText} logEncounterId={logEncounterId} isReadingLog={isReadingLog} report={report} events={events} onSelectEvent={setSelectedEvent} onFFLogsUrlChange={setFflogsUrl} onLogFileChange={(nextFile) => { setLogFile(nextFile); setLogEncounterId(""); }} onLogTextChange={(text) => { setLogText(text); setLogEncounterId(""); }} onLogEncounterChange={selectLogEncounter} onImportFFLogsUrl={importFFLogsUrlTimeline} onImportFFLogsTanks={importFFLogsUrlTanksAndMitigations} onReadLog={() => readLogTimeline()} />
+        </div>
       }
-      left={<ImportPanel language={language} fflogsUrl={fflogsUrl} logFile={logFile} logText={logText} logEncounterId={logEncounterId} isReadingLog={isReadingLog} report={report} events={events} onSelectEvent={setSelectedEvent} onFFLogsUrlChange={setFflogsUrl} onLogFileChange={(nextFile) => { setLogFile(nextFile); setLogEncounterId(""); }} onLogTextChange={(text) => { setLogText(text); setLogEncounterId(""); }} onLogEncounterChange={selectLogEncounter} onImportFFLogsUrl={importFFLogsUrlTimeline} onImportFFLogsTanks={importFFLogsUrlTanksAndMitigations} onReadLog={() => readLogTimeline()} />}
+      left={<SkillPalette language={language} skills={skills} activeRole={playerRole} activeJobName={(language === "zh" ? jobNames : jobNamesEn)[manualJob]} onDragSkillStart={setDraggingSkillId} onDragSkillEnd={() => setDraggingSkillId(null)} />}
       center={
         <div className="space-y-3">
-          <TimelineView language={language} events={events} assignments={assignments} maxTime={maxTime} isLocked={isLocked} viewMode={timelineViewMode} onViewModeChange={setTimelineViewMode} activeRole={playerRole} onSelectEvent={setSelectedEvent} onDropSkill={addManualSkill} onMoveAssignment={moveManualAssignment} onDeleteEvent={(id) => { if (!isLocked) setEvents((current) => current.filter((event) => event.id !== id)); }} onDeleteManual={(id) => { if (!isLocked) setManualAssignments((current) => current.filter((item) => item.id !== id)); }} skills={skills} />
+          <TimelineView language={language} events={events} assignments={assignments} maxTime={maxTime} isLocked={isLocked} viewMode={timelineViewMode} onViewModeChange={setTimelineViewMode} activeRole={playerRole} draggingSkillId={draggingSkillId} onSelectEvent={setSelectedEvent} onDropSkill={addManualSkill} onMoveAssignment={moveManualAssignment} onDeleteEvent={(id) => { if (!isLocked) setEvents((current) => current.filter((event) => event.id !== id)); }} onDeleteManual={(id) => { if (!isLocked) setManualAssignments((current) => current.filter((item) => item.id !== id)); }} skills={skills} />
           <div className="grid grid-cols-2 gap-3">
             <MitigationTable language={language} assignments={assignments} />
             <WarningPanel language={language} warnings={warnings} />
           </div>
         </div>
       }
-      right={<><SkillPalette language={language} skills={skills} activeRole={playerRole} activeJobName={(language === "zh" ? jobNames : jobNamesEn)[manualJob]} /><EventInspector language={language} event={selectedEvent} assignments={assignments} onUpdateEvent={updateEvent} /></>}
+      right={<EventInspector language={language} event={selectedEvent} assignments={assignments} onUpdateEvent={updateEvent} />}
     />
     {showTutorial ? <TutorialModal language={language} onClose={() => setShowTutorial(false)} /> : null}
     </>

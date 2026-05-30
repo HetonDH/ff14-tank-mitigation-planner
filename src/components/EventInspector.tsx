@@ -16,7 +16,7 @@ export function EventInspector({ language, event, assignments, onUpdateEvent }: 
   const zh = language === "zh";
   const { damageTypeLabels, eventTypeLabels, timelineTargetLabels } = labelsFor(language);
   const eventTypes: TimelineEventType[] = ["mechanic", "auto", "singleTankbuster", "sharedTankbuster", "spreadTankbuster", "singleDamage", "roleMechanic", "aoe"];
-  const damageTypes: DamageType[] = ["all", "physical", "magical"];
+  const damageTypes: DamageType[] = ["physical", "magical"];
   const updateType = (nextType: TimelineEventType) => {
     if (!event) return;
     const nextTarget = nextType === "sharedTankbuster" || nextType === "spreadTankbuster"

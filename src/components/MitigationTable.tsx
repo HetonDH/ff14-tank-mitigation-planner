@@ -12,6 +12,11 @@ interface Props {
 export function MitigationTable({ language, assignments }: Props) {
   const zh = language === "zh";
   const { assignmentTargetLabels, sourceLabels } = labelsFor(language);
+  function targetText(item: MitigationAssignment) {
+    if (item.target === "self") return item.casterRole;
+    if (item.target === "partner") return item.casterRole === "MT" ? "ST" : "MT";
+    return assignmentTargetLabels[item.target];
+  }
   return (
     <section className="tool-panel p-4">
       <h2 className="mb-3 text-base font-semibold">{zh ? "减伤结果表" : "Mitigation table"}</h2>
@@ -34,7 +39,7 @@ export function MitigationTable({ language, assignments }: Props) {
                 <td className="py-2">{formatTime(item.start)}</td>
                 <td>{zh ? item.skillName : findSkill(item.skillId)?.enName ?? item.skillName}</td>
                 <td>{item.casterRole}</td>
-                <td>{assignmentTargetLabels[item.target]}</td>
+                <td>{targetText(item)}</td>
                 <td>{item.duration}s</td>
                 <td>{sourceLabels[item.source]}</td>
                 <td className="text-amber-300">{item.warning ?? ""}</td>

@@ -1,6 +1,6 @@
 import type { DamageType } from "./mitigation";
 
-export type TimelineTarget = "MT" | "ST" | "bothTanks" | "party" | "self";
+export type TimelineTarget = "MT" | "ST" | "bothTanks" | "party" | "nonTank" | "self";
 export type TimelineEventType = "mechanic" | "auto" | "singleTankbuster" | "sharedTankbuster" | "spreadTankbuster" | "singleDamage" | "roleMechanic" | "aoe";
 
 export interface TimelineEvent {
