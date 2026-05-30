@@ -5,6 +5,7 @@ vite.config.js
 vite.config.d.ts
 dev-server.*.log
 release/
+research/
 .env
 .env.local
 .DS_Store

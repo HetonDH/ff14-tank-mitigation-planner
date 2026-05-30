@@ -3,6 +3,7 @@ import type { MitigationAssignment, PlannerResult, PlannerSettings, PlannerWarni
 import type { TimelineEvent } from "../types/timeline";
 import { formatTime, inAnyWindow } from "../utils/time";
 import { isTankbusterEvent, mitigationStackGroup, scoreSkillForEvent, skillMatchesEvent } from "./scoring";
+import { eventPriority, sampleInformedSkillBonus, shouldAllowHardMitStack } from "./tankMitigationPolicy";
 
 export interface PlannerInput {
   events: TimelineEvent[];
@@ -52,6 +53,21 @@ function stackPenalty(skillIds: Set<string>, groups: Set<string>, skillId: strin
   return 0;
 }
 
+function isOffCooldown(uses: number[] | undefined, start: number, cooldown: number) {
+  return !uses?.some((usedAt) => Math.abs(start - usedAt) < cooldown);
+}
+
+function pushUse(usesByKey: Map<string, number[]>, key: string, start: number) {
+  const uses = usesByKey.get(key) ?? [];
+  uses.push(start);
+  usesByKey.set(key, uses);
+}
+
+function countUsesInMinute(usesByKey: Map<string, number[]>, key: string, start: number) {
+  const minuteStart = Math.floor(start / 60) * 60;
+  return (usesByKey.get(key) ?? []).filter((usedAt) => usedAt >= minuteStart && usedAt < minuteStart + 60).length;
+}
+
 export function planMitigations(input: PlannerInput): PlannerResult {
   const { events, playerRole, settings } = input;
   const zh = settings.language !== "en";
@@ -59,16 +75,17 @@ export function planMitigations(input: PlannerInput): PlannerResult {
   const assignments: MitigationAssignment[] = [];
   const mtSkills = getSkillsForJob(input.mainTankJob, input.mainTankLevel);
   const stSkills = getSkillsForJob(input.offTankJob, input.offTankLevel);
-  const lastUse = new Map<string, number>();
-  let lastPartyMit = -Infinity;
+  const usesByKey = new Map<string, number[]>();
+  const partyMitUses: number[] = [];
 
-  const candidateEvents = events.filter((event) => event.type !== "mechanic" && (settings.includeAutoAttacks || event.type !== "auto"));
+  const candidateEvents = events.filter((event) => event.type !== "mechanic" && event.type !== "roleMechanic" && event.target !== "nonTank" && (settings.includeAutoAttacks || event.type !== "auto"));
   const autoWindows = candidateEvents.filter((event) => event.type === "auto");
   const autoWindowIds = new Set(autoWindows.map((event) => event.id));
   const pressureEvents = autoWindows.length
     ? [{ ...autoWindows[0], id: "auto-pressure", name: zh ? "平 A 压力窗口" : "Auto pressure window", time: autoWindows[0].time, duration: Math.max(8, (autoWindows[autoWindows.length - 1]?.time ?? autoWindows[0].time) - autoWindows[0].time + 8), severity: "medium" as const }]
     : [];
-  const workEvents = [...candidateEvents.filter((event) => event.type !== "auto"), ...pressureEvents].sort((a, b) => a.time - b.time);
+  const workEvents = [...candidateEvents.filter((event) => event.type !== "auto"), ...pressureEvents]
+    .sort((a, b) => eventPriority(b) - eventPriority(a) || a.time - b.time);
 
   for (const event of workEvents) {
     const highRisk = event.severity === "high" || event.severity === "lethal" || isTankbusterEvent(event);
@@ -92,14 +109,15 @@ export function planMitigations(input: PlannerInput): PlannerResult {
           if (skill.category === "target" && role !== requiredRole && !skill.canTargetPartner) return false;
           if (!forceSingleTankTools && skill.category === "personal" && event.target !== "bothTanks" && role !== requiredRole) return false;
           if (!forceSingleTankTools && skill.category === "target" && event.target !== "bothTanks" && !skill.canTargetPartner && role !== requiredRole) return false;
-          if (skill.category === "party" && event.target === "party" && event.time - lastPartyMit < settings.partyMitigationSpacing) return false;
+          if (skill.category === "party" && event.target === "party" && partyMitUses.some((usedAt) => Math.abs(event.time - usedAt) < settings.partyMitigationSpacing)) return false;
           const start = nextStartFor(event, skill.duration, settings);
-          const last = lastUse.get(`${role}:${skill.id}`);
-          return last === undefined || start - last >= skill.cooldown;
+          const key = `${role}:${skill.id}`;
+          if (skill.id === "drk-the-blackest-night" && countUsesInMinute(usesByKey, key, start) >= 4) return false;
+          return isOffCooldown(usesByKey.get(key), start, skill.cooldown);
         })
         .map((candidate) => {
           const start = nextStartFor(event, candidate.skill.duration, settings);
-          return { ...candidate, start, score: scoreSkillForEvent(candidate.skill, event, start, settings) };
+          return { ...candidate, start, score: scoreSkillForEvent(candidate.skill, event, start, settings) + sampleInformedSkillBonus(candidate.skill, event, 0) };
         })
         .filter(({ skill, start }) => canCover(start, skill.duration, event, settings))
         .sort((a, b) => b.score - a.score);
@@ -142,22 +160,29 @@ export function planMitigations(input: PlannerInput): PlannerResult {
         }
 
         assignments.push(assignment);
-        lastUse.set(`${chosen.role}:${chosen.skill.id}`, chosen.start);
+        pushUse(usesByKey, `${chosen.role}:${chosen.skill.id}`, chosen.start);
+        if (chosen.skill.category === "party") partyMitUses.push(event.time);
       }
       continue;
     }
 
     const valid = buildValid(desiredRole, false);
-    const neededLayers = isTankbusterEvent(event) ? (event.severity === "lethal" ? 3 : 2) : 1;
+    const neededLayers = isTankbusterEvent(event) ? (event.severity === "lethal" ? 3 : 2) : event.type === "aoe" && event.severity === "high" ? 2 : 1;
     const chosenList = [];
     const usedSkillIds = new Set<string>();
     const usedGroups = new Set<string>();
     for (let index = 0; index < neededLayers; index += 1) {
       const chosen = valid
         .filter((candidate) => !usedSkillIds.has(candidate.skill.id))
+        .filter((candidate) => shouldAllowHardMitStack(event) || mitigationStackGroup(candidate.skill) !== "hardMit" || !usedGroups.has("hardMit"))
         .map((candidate) => {
           const group = mitigationStackGroup(candidate.skill);
-          return { ...candidate, adjustedScore: candidate.score + stackPenalty(usedSkillIds, usedGroups, candidate.skill.id, group) };
+          return {
+            ...candidate,
+            adjustedScore: candidate.score
+              + sampleInformedSkillBonus(candidate.skill, event, index)
+              + stackPenalty(usedSkillIds, usedGroups, candidate.skill.id, group),
+          };
         })
         .sort((a, b) => b.adjustedScore - a.adjustedScore)[0];
       if (!chosen) break;
@@ -201,8 +226,8 @@ export function planMitigations(input: PlannerInput): PlannerResult {
       }
 
       assignments.push(assignment);
-      lastUse.set(`${chosen.role}:${chosen.skill.id}`, chosen.start);
-      if (chosen.skill.category === "party") lastPartyMit = event.time;
+      pushUse(usesByKey, `${chosen.role}:${chosen.skill.id}`, chosen.start);
+      if (chosen.skill.category === "party") partyMitUses.push(event.time);
     }
 
     if (isTankbusterEvent(event) && chosenList.filter((chosen) => mitigationStackGroup(chosen.skill) === "hardMit").length > 1) {
@@ -217,7 +242,7 @@ export function planMitigations(input: PlannerInput): PlannerResult {
 
   const coveredIds = new Set(assignments.flatMap((assignment) => assignment.eventIds));
   return {
-    assignments,
+    assignments: assignments.sort((a, b) => a.start - b.start),
     warnings,
     summary: {
       eventCount: events.length,
