@@ -46,7 +46,7 @@ export function SettingsPanel(props: Props) {
   const jobLabel = zh ? jobNames : jobNamesEn;
   return (
     <section className="tool-panel p-2.5">
-      <div className="grid grid-cols-[340px_minmax(430px,1fr)] gap-2">
+      <div className="grid grid-cols-[420px_minmax(430px,1fr)] gap-2">
         <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-2">
           <div className="mb-1.5 flex items-center justify-between text-xs">
             <span className="font-semibold text-slate-200">{zh ? "双 T 设置" : "Tank setup"}</span>
@@ -56,7 +56,7 @@ export function SettingsPanel(props: Props) {
             const isMt = role === "MT";
             const job = isMt ? props.mtJob : props.stJob;
             return (
-              <div key={role} className="mb-1.5 last:mb-0 grid grid-cols-[38px_112px_58px_96px] items-center gap-2">
+              <div key={role} className="mb-1.5 last:mb-0 grid grid-cols-[42px_150px_64px_118px] items-center gap-2">
                 <button
                   type="button"
                   onClick={() => props.onRoleChange(role)}
