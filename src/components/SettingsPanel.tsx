@@ -46,86 +46,81 @@ function JobMarker({ role, job, active, onClick }: { role: PlayerRole; job: Tank
   );
 }
 
+function ToggleRow({ checked, onChange, label, help }: { checked: boolean; onChange: (checked: boolean) => void; label: string; help: string }) {
+  return (
+    <label className="flex min-h-9 items-center gap-2 rounded-md border border-slate-800 bg-slate-950/60 px-2 py-1.5 text-xs text-slate-300">
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <HelpTip text={help} />
+    </label>
+  );
+}
+
 export function SettingsPanel(props: Props) {
   const { settings } = props;
   const zh = props.language === "zh";
   const jobLabel = zh ? jobNames : jobNamesEn;
   return (
-    <section className="tool-panel p-3">
-      <div className="grid grid-cols-[58px_minmax(0,1fr)_minmax(270px,0.8fr)] gap-2">
-        <div className="relative flex flex-col items-center justify-start pt-5">
-          <div className="absolute top-10 h-[74px] w-px bg-gradient-to-b from-cyan-300 via-slate-500 to-emerald-300" />
-          <JobMarker role="MT" job={props.mtJob} active={props.playerRole === "MT"} onClick={() => props.onRoleChange("MT")} />
-          <div className="h-6" />
-          <JobMarker role="ST" job={props.stJob} active={props.playerRole === "ST"} onClick={() => props.onRoleChange("ST")} />
-          <div className="mt-2 text-center text-[10px] text-slate-500">{zh ? "当前操控" : "Control"}</div>
-        </div>
-        <div className="space-y-2">
-        <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-2">
-        <div className="grid grid-cols-[1fr_86px_130px] items-end gap-3">
-          <label className="text-xs text-slate-400">
-            {zh ? "职业" : "Job"}
-            <select className="field mt-1 w-full" value={props.mtJob} onChange={(event) => props.onMtJobChange(event.target.value as TankJob)}>
-              {jobs.map((job) => <option key={job} value={job}>{jobLabel[job]}</option>)}
-            </select>
-          </label>
-          <label className="text-xs text-slate-400">
-            {zh ? "等级" : "Level"}
-            <input className="field mt-1 w-full" type="number" min={1} max={100} value={props.mtLevel} onChange={(event) => props.onMtLevelChange(Number(event.target.value))} />
-          </label>
-          <label className="text-xs text-slate-400">
-            {zh ? "血量" : "HP"}
-            <input className="field mt-1 w-full" type="number" min={1} value={props.mtHp} onChange={(event) => props.onMtHpChange(Number(event.target.value))} />
-          </label>
-        </div>
+    <section className="tool-panel p-2.5">
+      <div className="grid grid-cols-[48px_minmax(430px,1fr)_minmax(380px,0.8fr)] gap-2">
+        <div className="relative flex items-center justify-center">
+          <div className="absolute h-px w-10 bg-gradient-to-r from-cyan-300 to-emerald-300" />
+          <div className="flex flex-col gap-2">
+            <JobMarker role="MT" job={props.mtJob} active={props.playerRole === "MT"} onClick={() => props.onRoleChange("MT")} />
+            <JobMarker role="ST" job={props.stJob} active={props.playerRole === "ST"} onClick={() => props.onRoleChange("ST")} />
+          </div>
         </div>
 
         <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-2">
-        <div className="grid grid-cols-[1fr_86px_130px] items-end gap-3">
-          <label className="text-xs text-slate-400">
-            {zh ? "职业" : "Job"}
-            <select className="field mt-1 w-full" value={props.stJob} onChange={(event) => props.onStJobChange(event.target.value as TankJob)}>
-              {jobs.map((job) => <option key={job} value={job}>{jobLabel[job]}</option>)}
-            </select>
-          </label>
-          <label className="text-xs text-slate-400">
-            {zh ? "等级" : "Level"}
-            <input className="field mt-1 w-full" type="number" min={1} max={100} value={props.stLevel} onChange={(event) => props.onStLevelChange(Number(event.target.value))} disabled={props.syncLevels} />
-          </label>
-          <label className="text-xs text-slate-400">
-            {zh ? "血量" : "HP"}
-            <input className="field mt-1 w-full" type="number" min={1} value={props.stHp} onChange={(event) => props.onStHpChange(Number(event.target.value))} />
-          </label>
-        </div>
-        </div>
+          <div className="mb-1.5 flex items-center justify-between text-xs">
+            <span className="font-semibold text-slate-200">{zh ? "双 T 设置" : "Tank setup"}</span>
+            <span className="text-slate-500">{zh ? `当前：${props.playerRole}` : `Control: ${props.playerRole}`}</span>
+          </div>
+          {(["MT", "ST"] as PlayerRole[]).map((role) => {
+            const isMt = role === "MT";
+            const job = isMt ? props.mtJob : props.stJob;
+            return (
+              <div key={role} className="mb-1 last:mb-0 grid grid-cols-[42px_minmax(110px,1fr)_64px_96px] items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => props.onRoleChange(role)}
+                  className={`h-9 rounded-md border text-xs font-bold ${props.playerRole === role ? "border-cyan-300 bg-cyan-400/15 text-cyan-100" : "border-slate-700 bg-slate-900 text-slate-300"}`}
+                >
+                  {role}
+                </button>
+                <select className="field h-9 w-full px-2 py-1 text-xs" value={job} onChange={(event) => isMt ? props.onMtJobChange(event.target.value as TankJob) : props.onStJobChange(event.target.value as TankJob)}>
+                  {jobs.map((item) => <option key={item} value={item}>{jobLabel[item]}</option>)}
+                </select>
+                <input className="field h-9 w-full px-2 py-1 text-xs" title={zh ? "等级" : "Level"} type="number" min={1} max={100} value={isMt ? props.mtLevel : props.stLevel} disabled={!isMt && props.syncLevels} onChange={(event) => isMt ? props.onMtLevelChange(Number(event.target.value)) : props.onStLevelChange(Number(event.target.value))} />
+                <input className="field h-9 w-full px-2 py-1 text-xs" title={zh ? "血量" : "HP"} type="number" min={1} value={isMt ? props.mtHp : props.stHp} onChange={(event) => isMt ? props.onMtHpChange(Number(event.target.value)) : props.onStHpChange(Number(event.target.value))} />
+              </div>
+            );
+          })}
         </div>
 
-        <div className="grid gap-2 rounded-lg border border-slate-800 bg-slate-950/50 p-2">
-        <label className="text-xs text-slate-400">
-          {zh ? "副本等级" : "Duty level"} <HelpTip text={zh ? "没有导入双 T 信息时，可用这个等级过滤技能；勾选同步后 MT/ST 等级跟随副本等级。" : "Used to filter skills when tank info is not imported. Sync makes MT/ST levels follow this duty level."} />
-          <input className="field mt-1 w-full" type="number" min={1} max={100} value={settings.dutyLevel} onChange={(event) => props.onSettingsChange({ ...settings, dutyLevel: Number(event.target.value) })} />
-        </label>
-        <label className="flex items-center gap-2 rounded-md border border-slate-700 px-3 py-2 text-xs text-slate-300">
-          <input type="checkbox" checked={props.syncLevels} onChange={(event) => props.onSyncLevelsChange(event.target.checked)} />
-          {zh ? "同步副本等级" : "Sync duty level"}
-          <HelpTip text={zh ? "只在没有从 FFLogs 识别到玩家等级时使用；不是强制让双 T 永远同级。" : "Used when FFLogs does not provide player levels; it is not a forced permanent MT/ST sync."} />
-        </label>
-        <label className="text-xs text-slate-400">
-          {zh ? "避让半径" : "Avoid radius"} <HelpTip text={zh ? "开启避让爆发后，算法会尽量避开 60/120 秒爆发点前后这个范围；必要时仍会安排并提示。" : "When burst avoidance is enabled, the planner avoids this many seconds around 60/120s burst marks unless coverage requires it."} />
-          <input className="field mt-1 w-full" type="number" min={0} value={settings.burstWindowRadius} onChange={(event) => props.onSettingsChange({ ...settings, burstWindowRadius: Number(event.target.value) })} />
-          <div className="mt-1 text-[10px] text-slate-500">{zh ? "单位：秒" : "Unit: seconds"}</div>
-        </label>
-        <label className="text-xs text-slate-400">
-          {zh ? "判定提前" : "Safety lead"} <HelpTip text={zh ? "减伤会比伤害判定点提前这段时间，用来给服务器结算和延迟留缓冲。" : "Mitigation is placed this many seconds before the damage snapshot to account for latency and server timing."} />
-          <input className="field mt-1 w-full" type="number" min={0} max={5} step={0.5} value={settings.mitigationSafetyBuffer} onChange={(event) => props.onSettingsChange({ ...settings, mitigationSafetyBuffer: Number(event.target.value) })} />
-          <div className="mt-1 text-[10px] text-slate-500">{zh ? "单位：秒" : "Unit: seconds"}</div>
-        </label>
-        <div className="grid grid-cols-2 gap-1.5 text-xs">
-          <label className="flex items-center gap-2 rounded-md border border-slate-700 px-3 py-2"><input type="checkbox" checked={settings.allowInvuln} onChange={(event) => props.onSettingsChange({ ...settings, allowInvuln: event.target.checked })} />{zh ? "允许无敌" : "Allow invuln"}<HelpTip text={zh ? "允许算法使用无敌处理高危死刑。" : "Allow invulnerability for high-risk tankbusters."} /></label>
-          <label className="flex items-center gap-2 rounded-md border border-slate-700 px-3 py-2"><input type="checkbox" checked={settings.preferInvulnCheese} onChange={(event) => props.onSettingsChange({ ...settings, preferInvulnCheese: event.target.checked })} />{zh ? "优先无敌逃课" : "Prefer invuln"}<HelpTip text={zh ? "更积极地用无敌处理可单吃/可逃课机制。" : "More aggressively use invulnerability for cheeseable mechanics."} /></label>
-          <label className="flex items-center gap-2 rounded-md border border-slate-700 px-3 py-2"><input type="checkbox" checked={settings.includeAutoAttacks} onChange={(event) => props.onSettingsChange({ ...settings, includeAutoAttacks: event.target.checked })} />{zh ? "考虑平 A" : "Include autos"}<HelpTip text={zh ? "把平 A 压力窗口也纳入短 CD 减伤规划。" : "Include auto-attack pressure windows in short cooldown planning."} /></label>
-          <label className="flex items-center gap-2 rounded-md border border-slate-700 px-3 py-2"><input type="checkbox" checked={settings.avoidBurstWindows} onChange={(event) => props.onSettingsChange({ ...settings, avoidBurstWindows: event.target.checked })} />{zh ? "避让爆发" : "Avoid burst"}<HelpTip text={zh ? "默认关闭；开启后尽量避开 60/120 秒爆发附近。" : "Off by default; when enabled, avoids 60/120s burst windows when possible."} /></label>
-        </div>
+        <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-2">
+          <div className="grid grid-cols-[72px_72px_minmax(0,1fr)] gap-1.5">
+            <label className="text-[11px] text-slate-400">
+              {zh ? "副本Lv" : "Duty"} <HelpTip text={zh ? "没有导入双 T 信息时，用这个等级过滤技能。" : "Filters skills when tank info was not imported."} />
+              <input className="field mt-1 h-8 w-full px-2 py-1 text-xs" type="number" min={1} max={100} value={settings.dutyLevel} onChange={(event) => props.onSettingsChange({ ...settings, dutyLevel: Number(event.target.value) })} />
+            </label>
+            <label className="text-[11px] text-slate-400">
+              {zh ? "提前(s)" : "Lead(s)"} <HelpTip text={zh ? "减伤比伤害判定点提前的秒数，给延迟和服务器结算留缓冲。" : "Seconds before the damage snapshot used as a latency/server buffer."} />
+              <input className="field mt-1 h-8 w-full px-2 py-1 text-xs" type="number" min={0} max={5} step={0.5} value={settings.mitigationSafetyBuffer} onChange={(event) => props.onSettingsChange({ ...settings, mitigationSafetyBuffer: Number(event.target.value) })} />
+            </label>
+            <label className="text-[11px] text-slate-400">
+              {zh ? "爆发避让(s)" : "Burst radius(s)"} <HelpTip text={zh ? "开启避让爆发后，尽量避开 60/120 秒爆发点前后这个范围；必要时仍会安排。" : "When enabled, avoids this radius around 60/120s bursts when possible."} />
+              <input className="field mt-1 h-8 w-full px-2 py-1 text-xs" type="number" min={0} value={settings.burstWindowRadius} onChange={(event) => props.onSettingsChange({ ...settings, burstWindowRadius: Number(event.target.value) })} />
+            </label>
+          </div>
+          <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+            <ToggleRow checked={props.syncLevels} onChange={props.onSyncLevelsChange} label={zh ? "同步副本Lv" : "Sync duty"} help={zh ? "只在没有从 FFLogs 识别到等级时使用；不是强制双 T 永远同级。" : "Used when FFLogs did not provide levels; not a permanent forced sync."} />
+            <ToggleRow checked={settings.allowInvuln} onChange={(checked) => props.onSettingsChange({ ...settings, allowInvuln: checked })} label={zh ? "允许无敌" : "Invuln"} help={zh ? "允许算法使用无敌处理高危死刑。" : "Allow invulnerability for high-risk tankbusters."} />
+            <ToggleRow checked={settings.preferInvulnCheese} onChange={(checked) => props.onSettingsChange({ ...settings, preferInvulnCheese: checked })} label={zh ? "无敌逃课" : "Cheese"} help={zh ? "更积极地用无敌处理可单吃/可逃课机制。" : "Use invulnerability more aggressively for cheeseable mechanics."} />
+            <ToggleRow checked={settings.includeAutoAttacks} onChange={(checked) => props.onSettingsChange({ ...settings, includeAutoAttacks: checked })} label={zh ? "考虑平 A" : "Autos"} help={zh ? "把平 A 压力窗口纳入短 CD 规划。" : "Include auto pressure windows in short cooldown planning."} />
+            <ToggleRow checked={settings.avoidBurstWindows} onChange={(checked) => props.onSettingsChange({ ...settings, avoidBurstWindows: checked })} label={zh ? "避让爆发" : "Avoid burst"} help={zh ? "默认关闭；开启后尽量避开 60/120 秒爆发附近。" : "Off by default; tries to avoid 60/120s burst windows."} />
+            <div className="flex items-center rounded-md border border-slate-800 bg-slate-950/60 px-2 text-[11px] text-slate-500">{zh ? "团减错开固定 15s" : "Party mit gap fixed 15s"}</div>
+          </div>
         </div>
       </div>
     </section>

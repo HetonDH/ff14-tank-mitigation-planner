@@ -1,4 +1,4 @@
-import { getSkillsForJob } from "../data/tankJobs";
+import { findSkill, getSkillsForJob } from "../data/tankJobs";
 import type { MitigationAssignment, PlannerResult, PlannerSettings, PlannerWarning, PlayerRole, TankJob } from "../types/mitigation";
 import type { TimelineEvent } from "../types/timeline";
 import { formatTime, inAnyWindow } from "../utils/time";
@@ -79,6 +79,20 @@ export function planMitigations(input: PlannerInput): PlannerResult {
   const partyMitUses: number[] = [];
 
   const candidateEvents = events.filter((event) => event.type !== "mechanic" && event.type !== "roleMechanic" && event.target !== "nonTank" && (settings.includeAutoAttacks || event.type !== "auto"));
+  if (!candidateEvents.length) {
+    warnings.push({
+      id: "warn-no-plannable-events",
+      level: "warning",
+      message: zh ? "当前时间轴没有可规划的坦克伤害事件；机制、非 T 目标或被过滤的平 A 不会消耗减伤。" : "The current timeline has no plannable tank damage events. Mechanics, non-tank targets, and filtered autos do not spend mitigation.",
+    });
+  }
+  if (!settings.includeAutoAttacks && events.some((event) => event.type === "auto")) {
+    warnings.push({
+      id: "info-autos-filtered",
+      level: "info",
+      message: zh ? "已关闭平 A 规划：导入的平 A 会显示在时间轴上，但不会自动消耗短 CD。" : "Auto planning is disabled. Imported autos remain visible but will not automatically spend short cooldowns.",
+    });
+  }
   const autoWindows = candidateEvents.filter((event) => event.type === "auto");
   const autoWindowIds = new Set(autoWindows.map((event) => event.id));
   const pressureEvents = autoWindows.length
@@ -118,7 +132,7 @@ export function planMitigations(input: PlannerInput): PlannerResult {
         .map((candidate) => {
           const start = nextStartFor(event, candidate.skill.duration, settings);
           const partnerJob = candidate.role === "MT" ? input.offTankJob : input.mainTankJob;
-          const reservePenalty = shouldReserveLongCooldown(candidate.skill, event, start, candidateEvents) ? 80 : 0;
+          const reservePenalty = shouldReserveLongCooldown(candidate.skill, event, start, candidateEvents) ? (event.severity === "medium" ? 130 : 90) : 0;
           return {
             ...candidate,
             start,
@@ -249,6 +263,35 @@ export function planMitigations(input: PlannerInput): PlannerResult {
   }
 
   const coveredIds = new Set(assignments.flatMap((assignment) => assignment.eventIds));
+  const uncoveredHighRisk = events.filter((event) => (event.severity === "high" || event.severity === "lethal" || isTankbusterEvent(event)) && event.target !== "nonTank" && !coveredIds.has(event.id));
+  if (uncoveredHighRisk.length) {
+    warnings.push({
+      id: "warn-high-risk-left-open",
+      level: uncoveredHighRisk.some((event) => event.severity === "lethal") ? "danger" : "warning",
+      message: zh
+        ? `仍有 ${uncoveredHighRisk.length} 个高危/死刑事件没有覆盖；建议检查职业等级、是否允许无敌，以及手动补短 CD 或搭档支援。`
+        : `${uncoveredHighRisk.length} high-risk/tankbuster event(s) remain uncovered. Check levels, invulnerability settings, and add short cooldowns or partner support manually.`,
+    });
+  }
+  const targetSupportCount = assignments.filter((assignment) => assignment.target === "MT" || assignment.target === "ST").length;
+  if (targetSupportCount && targetSupportCount < Math.max(2, Math.floor(assignments.length * 0.18))) {
+    warnings.push({
+      id: "info-low-target-support",
+      level: "info",
+      message: zh ? "本次方案里的跨 T/单体支援偏少；如果时间轴有连续死刑或换 T，建议手动检查干预、勇猛、献奉、刚玉、黑盾覆盖。" : "This plan uses relatively little single-target/partner support. For repeated tankbusters or swaps, manually check Intervention, Nascent Flash, Oblation, Heart of Corundum, and TBN coverage.",
+    });
+  }
+  const partyMitCount = assignments.filter((assignment) => {
+    const skill = findSkill(assignment.skillId);
+    return skill?.category === "party" || skill?.id === "common-reprisal";
+  }).length;
+  if (partyMitCount >= 3) {
+    warnings.push({
+      id: "info-party-mit-rotation",
+      level: "info",
+      message: zh ? "已安排多次团减/雪仇；请确认它们没有和队友团减完全重叠，默认建议至少错开 15 秒。" : "Multiple party mitigations/Reprisals were scheduled. Confirm they do not fully overlap with party tools from other players; 15s spacing is recommended by default.",
+    });
+  }
   return {
     assignments: assignments.sort((a, b) => a.start - b.start),
     warnings,

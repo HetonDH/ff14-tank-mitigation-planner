@@ -19,11 +19,11 @@ const FREQUENT_SAMPLE_SKILL_BONUS: Record<string, number> = {
   "common-rampart": 8,
   "pld-bulwark": 12,
   "pld-guardian": 20,
-  "pld-sheltron": 34,
+  "pld-sheltron": 36,
   "pld-divine-veil": 22,
   "pld-passage-of-arms": 18,
   "war-damnation": 20,
-  "war-thrill-of-battle": 8,
+  "war-thrill-of-battle": 10,
   "drk-the-blackest-night": 36,
   "drk-oblation": 28,
   "drk-dark-missionary": 24,
@@ -34,10 +34,10 @@ const FREQUENT_SAMPLE_SKILL_BONUS: Record<string, number> = {
   "gnb-heart-of-light": 22,
   "gnb-camouflage": 10,
   "gnb-great-nebula": 18,
-  "pld-intervention": 22,
-  "war-nascent-flash": 24,
-  "war-bloodwhetting": 28,
-  "war-shake-it-off": 20,
+  "pld-intervention": 30,
+  "war-nascent-flash": 28,
+  "war-bloodwhetting": 32,
+  "war-shake-it-off": 24,
 };
 
 const PAIR_SUPPORT_BONUS: Partial<Record<TankJob, Partial<Record<TankJob, Record<string, number>>>>> = {
@@ -49,11 +49,11 @@ const PAIR_SUPPORT_BONUS: Partial<Record<TankJob, Partial<Record<TankJob, Record
   PLD: {
     DRK: { "pld-sheltron": 14, "pld-intervention": 12, "drk-the-blackest-night": 18, "drk-oblation": 14 },
     GNB: { "pld-sheltron": 10, "gnb-heart-of-corundum": 18, "gnb-aurora": 8 },
-    WAR: { "pld-sheltron": 12, "pld-intervention": 16, "war-bloodwhetting": 12, "war-nascent-flash": 14, "war-shake-it-off": 8 },
+    WAR: { "pld-sheltron": 14, "pld-intervention": 24, "war-bloodwhetting": 16, "war-nascent-flash": 18, "war-shake-it-off": 12 },
   },
   WAR: {
     GNB: { "war-bloodwhetting": 14, "war-nascent-flash": 16, "gnb-heart-of-corundum": 16, "gnb-aurora": 8 },
-    PLD: { "war-bloodwhetting": 12, "war-nascent-flash": 14, "pld-sheltron": 12, "pld-intervention": 16 },
+    PLD: { "war-bloodwhetting": 16, "war-nascent-flash": 18, "pld-sheltron": 14, "pld-intervention": 24 },
     DRK: { "war-bloodwhetting": 12, "war-nascent-flash": 14, "drk-the-blackest-night": 14, "drk-oblation": 10 },
   },
   GNB: {

@@ -297,7 +297,7 @@ function App() {
         </>
       }
       settings={
-        <div className="grid grid-cols-[minmax(520px,1fr)_420px] gap-3">
+        <div className="grid grid-cols-[minmax(760px,1fr)_360px] gap-3">
           <SettingsPanel
             playerRole={playerRole}
             mtJob={mainTankJob}
