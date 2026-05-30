@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { BookOpen, Download, Eraser, Lock, Sparkles, Unlock, Upload } from "lucide-react";
 import { AppShell } from "./components/AppShell";
+import { EventList } from "./components/EventList";
 import { EventInspector } from "./components/EventInspector";
 import { ImportPanel } from "./components/ImportPanel";
 import { MitigationTable } from "./components/MitigationTable";
@@ -297,7 +298,7 @@ function App() {
         </>
       }
       settings={
-        <div className="grid grid-cols-[minmax(960px,1fr)_420px] items-start gap-3">
+        <div className="grid grid-cols-[minmax(960px,1fr)_420px] items-stretch gap-3">
           <SettingsPanel
             playerRole={playerRole}
             mtJob={mainTankJob}
@@ -319,7 +320,7 @@ function App() {
             onSyncLevelsChange={(sync) => { setSyncLevels(sync); if (sync) { setMtLevel(settings.dutyLevel); setStLevel(settings.dutyLevel); } setAutoAssignments([]); }}
             onSettingsChange={updateSettings}
           />
-          <ImportPanel language={language} fflogsUrl={fflogsUrl} logFile={logFile} logText={logText} logEncounterId={logEncounterId} isReadingLog={isReadingLog} report={report} events={events} onSelectEvent={setSelectedEvent} onFFLogsUrlChange={setFflogsUrl} onLogFileChange={(nextFile) => { setLogFile(nextFile); setLogEncounterId(""); }} onLogTextChange={(text) => { setLogText(text); setLogEncounterId(""); }} onLogEncounterChange={selectLogEncounter} onImportFFLogsUrl={importFFLogsUrlTimeline} onImportFFLogsTanks={importFFLogsUrlTanksAndMitigations} onReadLog={() => readLogTimeline()} />
+          <ImportPanel language={language} fflogsUrl={fflogsUrl} logFile={logFile} logText={logText} logEncounterId={logEncounterId} isReadingLog={isReadingLog} report={report} onFFLogsUrlChange={setFflogsUrl} onLogFileChange={(nextFile) => { setLogFile(nextFile); setLogEncounterId(""); }} onLogTextChange={(text) => { setLogText(text); setLogEncounterId(""); }} onLogEncounterChange={selectLogEncounter} onImportFFLogsUrl={importFFLogsUrlTimeline} onImportFFLogsTanks={importFFLogsUrlTanksAndMitigations} onReadLog={() => readLogTimeline()} />
         </div>
       }
       left={<SkillPalette language={language} skills={skills} activeRole={playerRole} activeJobName={(language === "zh" ? jobNames : jobNamesEn)[manualJob]} onDragSkillStart={setDraggingSkillId} onDragSkillEnd={() => setDraggingSkillId(null)} />}
@@ -330,6 +331,7 @@ function App() {
             <MitigationTable language={language} assignments={assignments} />
             <WarningPanel language={language} warnings={warnings} />
           </div>
+          <EventList language={language} events={events} onSelectEvent={setSelectedEvent} />
         </div>
       }
       right={<EventInspector language={language} event={selectedEvent} assignments={assignments} onUpdateEvent={updateEvent} />}

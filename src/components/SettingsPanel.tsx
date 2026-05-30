@@ -46,7 +46,11 @@ export function SettingsPanel(props: Props) {
   const zh = props.language === "zh";
   const jobLabel = zh ? jobNames : jobNamesEn;
   return (
-    <section className="tool-panel p-3">
+    <section className="tool-panel h-full p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-slate-100">{zh ? "职业与副本设置" : "Jobs and duty settings"}</h2>
+        <span className="text-xs text-slate-500">{zh ? "双 T / 等级 / 血量 / 算法选项" : "Tanks / levels / HP / planner options"}</span>
+      </div>
       <div className="grid grid-cols-[520px_minmax(430px,1fr)] gap-2.5">
         <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-2">
           <div className="mb-1.5 flex items-center justify-between text-xs">

@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { FileText, Link2, Upload } from "lucide-react";
-import type { ParseReport, TimelineEvent } from "../types/timeline";
-import { formatTime } from "../utils/time";
-import { labelsFor } from "../utils/labels";
+import type { ParseReport } from "../types/timeline";
 import type { UiLanguage } from "../types/ui";
 
 interface Props {
@@ -13,8 +11,6 @@ interface Props {
   logEncounterId: string;
   isReadingLog: boolean;
   report: ParseReport | null;
-  events: TimelineEvent[];
-  onSelectEvent: (event: TimelineEvent) => void;
   onFFLogsUrlChange: (url: string) => void;
   onLogFileChange: (file: File | null) => void;
   onLogTextChange: (text: string) => void;
@@ -24,12 +20,11 @@ interface Props {
   onReadLog: () => void;
 }
 
-export function ImportPanel({ language, fflogsUrl, logFile, logText, logEncounterId, isReadingLog, report, events, onSelectEvent, onFFLogsUrlChange, onLogFileChange, onLogTextChange, onLogEncounterChange, onImportFFLogsUrl, onImportFFLogsTanks, onReadLog }: Props) {
+export function ImportPanel({ language, fflogsUrl, logFile, logText, logEncounterId, isReadingLog, report, onFFLogsUrlChange, onLogFileChange, onLogTextChange, onLogEncounterChange, onImportFFLogsUrl, onImportFFLogsTanks, onReadLog }: Props) {
   const zh = language === "zh";
-  const { eventTypeLabels, severityLabels, timelineTargetLabels } = labelsFor(language);
   const [tab, setTab] = useState<"fflogs" | "local">("fflogs");
   return (
-    <section className="tool-panel p-2.5">
+    <section className="tool-panel h-full p-2.5">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-sm font-semibold"><Upload size={15} />{zh ? "战斗记录" : "Fight log"}</h2>
         <div className="flex rounded-md border border-slate-700 bg-slate-950 p-0.5 text-xs">
@@ -95,19 +90,6 @@ export function ImportPanel({ language, fflogsUrl, logFile, logText, logEncounte
           <div className="col-span-2 truncate">{zh ? "跳过" : "Skipped"}：{report.skippedRows.length ? report.skippedRows.slice(0, 3).map((row) => zh ? `${row.row} 行 ${row.reason}` : `Row ${row.row}: ${row.reason}`).join(zh ? "；" : "; ") : zh ? "无" : "None"}</div>
         </div>
       )}
-      <div className="mt-2 max-h-[150px] overflow-auto">
-        <div className="mb-1 text-xs font-semibold text-slate-300">{zh ? "事件列表" : "Events"}</div>
-        <div className="space-y-1.5">
-          {events.map((event) => (
-            <button key={event.id} className="w-full rounded-md border border-slate-800 bg-slate-950 p-2 text-left text-[11px] transition hover:border-cyan-400" onClick={() => onSelectEvent(event)}>
-              <div className="flex justify-between text-slate-100"><span>{event.name}</span><span>{formatTime(event.time)}</span></div>
-              <div className="mt-1 text-slate-400">{timelineTargetLabels[event.target]} · {eventTypeLabels[event.type]} · {severityLabels[event.severity]}</div>
-              {event.targetDamageLabel ? <div className="text-slate-500">{event.targetDamageLabel}</div> : null}
-            </button>
-          ))}
-          {!events.length && <div className="text-sm text-slate-500">{zh ? "尚未读取事件。" : "No events loaded."}</div>}
-        </div>
-      </div>
     </section>
   );
 }
