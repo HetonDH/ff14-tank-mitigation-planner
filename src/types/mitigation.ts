@@ -26,6 +26,8 @@ export interface MitigationSkill {
   maxLevel?: number;
   statusIds?: number[];
   trackGroup?: number;
+  resourceCost?: number;
+  resourceType?: "pldOath";
   notes?: string;
 }
 

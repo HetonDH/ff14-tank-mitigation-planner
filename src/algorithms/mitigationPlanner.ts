@@ -68,6 +68,23 @@ function countUsesInMinute(usesByKey: Map<string, number[]>, key: string, start:
   return (usesByKey.get(key) ?? []).filter((usedAt) => usedAt >= minuteStart && usedAt < minuteStart + 60).length;
 }
 
+const PLD_OATH_START = 100;
+const PLD_OATH_CAP = 100;
+const PLD_OATH_GAIN = 5;
+const PLD_OATH_GAIN_INTERVAL = 2.24;
+
+function pldOathAt(usesByKey: Map<string, number[]>, role: PlayerRole, start: number) {
+  const naturalGauge = Math.min(PLD_OATH_CAP, PLD_OATH_START + Math.floor(start / PLD_OATH_GAIN_INTERVAL) * PLD_OATH_GAIN);
+  const spent = [...usesByKey.entries()].reduce((sum, [key, uses]) => {
+    if (!key.startsWith(`${role}:`)) return sum;
+    const skillId = key.slice(role.length + 1);
+    const skill = findSkill(skillId);
+    if (skill?.resourceType !== "pldOath") return sum;
+    return sum + uses.filter((usedAt) => usedAt <= start).length * (skill.resourceCost ?? 0);
+  }, 0);
+  return Math.max(0, naturalGauge - spent);
+}
+
 function autoPressureWindows(autoEvents: TimelineEvent[], zh: boolean) {
   const windows: TimelineEvent[] = [];
   const idsByWindow = new Map<string, string[]>();
@@ -122,6 +139,7 @@ export function planMitigations(input: PlannerInput): PlannerResult {
   const stSkills = getSkillsForJob(input.offTankJob, input.offTankLevel);
   const usesByKey = new Map<string, number[]>();
   const partyMitUses: number[] = [];
+  const hasPaladin = input.mainTankJob === "PLD" || input.offTankJob === "PLD";
 
   const candidateEvents = events.filter((event) => event.type !== "mechanic" && event.type !== "roleMechanic" && event.target !== "nonTank" && (settings.includeAutoAttacks || event.type !== "auto"));
   if (!candidateEvents.length) {
@@ -169,6 +187,7 @@ export function planMitigations(input: PlannerInput): PlannerResult {
           const start = nextStartFor(event, skill.duration, settings);
           const key = `${role}:${skill.id}`;
           if (skill.id === "drk-the-blackest-night" && countUsesInMinute(usesByKey, key, start) >= 4) return false;
+          if (skill.resourceType === "pldOath" && pldOathAt(usesByKey, role, start) < (skill.resourceCost ?? 0)) return false;
           return isOffCooldown(usesByKey.get(key), start, skill.cooldown);
         })
         .map((candidate) => {
@@ -357,6 +376,15 @@ export function planMitigations(input: PlannerInput): PlannerResult {
       id: "info-party-mit-rotation",
       level: "info",
       message: zh ? "已安排多次团减/雪仇；请确认它们没有和队友团减完全重叠，默认建议至少错开 15 秒。" : "Multiple party mitigations/Reprisals were scheduled. Confirm they do not fully overlap with party tools from other players; 15s spacing is recommended by default.",
+    });
+  }
+  if (hasPaladin) {
+    warnings.push({
+      id: "info-pld-oath-model",
+      level: "info",
+      message: zh
+        ? "骑士忠义值已纳入计算：圣盾阵、干预、保护按 50 点忠义值消耗处理；当前版本按开场 100、约每 2.24 秒自动攻击获得 5 点估算，Boss 上天/不可攻击时间暂未自动扣除。"
+        : "Paladin Oath is included: Sheltron, Intervention, and Cover spend 50 Oath. This version estimates 100 Oath at pull and +5 Oath about every 2.24s from autos; boss downtime is not automatically subtracted yet.",
     });
   }
   return {
