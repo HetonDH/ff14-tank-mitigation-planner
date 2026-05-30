@@ -117,7 +117,8 @@ export function planMitigations(input: PlannerInput): PlannerResult {
         })
         .map((candidate) => {
           const start = nextStartFor(event, candidate.skill.duration, settings);
-          return { ...candidate, start, score: scoreSkillForEvent(candidate.skill, event, start, settings) + sampleInformedSkillBonus(candidate.skill, event, 0) };
+          const partnerJob = candidate.role === "MT" ? input.offTankJob : input.mainTankJob;
+          return { ...candidate, start, score: scoreSkillForEvent(candidate.skill, event, start, settings) + sampleInformedSkillBonus(candidate.skill, event, 0, candidate.job, partnerJob) };
         })
         .filter(({ skill, start }) => canCover(start, skill.duration, event, settings))
         .sort((a, b) => b.score - a.score);
@@ -180,7 +181,7 @@ export function planMitigations(input: PlannerInput): PlannerResult {
           return {
             ...candidate,
             adjustedScore: candidate.score
-              + sampleInformedSkillBonus(candidate.skill, event, index)
+              + sampleInformedSkillBonus(candidate.skill, event, index, candidate.job, candidate.role === "MT" ? input.offTankJob : input.mainTankJob)
               + stackPenalty(usedSkillIds, usedGroups, candidate.skill.id, group),
           };
         })
